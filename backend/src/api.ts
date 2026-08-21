@@ -116,7 +116,5 @@ function serializeGuess(guess: GuessRow) {
     resolveAfter: guess.resolve_after.toISOString(),
     resolvedAt: guess.resolved_at?.toISOString() ?? null,
     resolvedPrice: guess.resolved_price,
-    result: guess.result,
-    scoreDelta: guess.score_delta,
   };
 }

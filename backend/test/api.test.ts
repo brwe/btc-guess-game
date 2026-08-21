@@ -21,8 +21,6 @@ function createTestContext(existingRows: GuessRow[] = []) {
         resolve_after: guess.resolveAfter,
         resolved_at: null,
         resolved_price: null,
-        result: null,
-        score_delta: null,
       });
     },
     async findById(id) {
@@ -139,8 +137,6 @@ describe("GET /api/guesses/:id", () => {
       resolveAfter: "2026-08-19T10:01:00.000Z",
       resolvedAt: null,
       resolvedPrice: null,
-      result: null,
-      scoreDelta: null,
     });
   });
 

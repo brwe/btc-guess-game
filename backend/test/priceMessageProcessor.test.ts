@@ -6,8 +6,8 @@ describe("PriceMessageProcessor", () => {
   test("passes a price message to the repository and reports resolved guesses", async () => {
     const calls: Array<{ price: number; observedAt: Date }> = [];
     const resolvedGuesses: ResolvedGuess[] = [
-      { id: "guess-up", result: "win", scoreDelta: 1 },
-      { id: "guess-down", result: "loss", scoreDelta: -1 },
+      { id: "guess-up" },
+      { id: "guess-down" },
     ];
     const repository: GuessResolutionRepository = {
       async resolveEligible(price, observedAt) {

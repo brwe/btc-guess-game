@@ -2,7 +2,6 @@ import type postgres from "postgres";
 
 export type Direction = "up" | "down";
 export type GuessStatus = "pending" | "resolved";
-export type GuessResult = "win" | "loss";
 
 export type PendingGuess = {
   id: string;
@@ -23,20 +22,14 @@ export type GuessRow = {
   resolve_after: Date;
   resolved_at: Date | null;
   resolved_price: number | null;
-  result: GuessResult | null;
-  score_delta: number | null;
 };
 
 export type ResolvedGuess = {
   id: string;
-  result: GuessResult;
-  scoreDelta: 1 | -1;
 };
 
 type ResolvedGuessRow = {
   id: string;
-  result: GuessResult;
-  score_delta: 1 | -1;
 };
 
 export interface GuessRepository {
@@ -49,11 +42,18 @@ export interface GuessResolutionRepository {
 }
 
 export class PostgresGuessRepository implements GuessRepository, GuessResolutionRepository {
-  constructor(private readonly sql: postgres.Sql) {}
+  constructor(private readonly sql: postgres.Sql) { }
 
   async initialize() {
+
+    /// This is because this is just a pet peoject and I do not think ading migrations etc are worth it here. 
+    // In reality I would use a proper handling of this.
     await this.sql`
-      CREATE TABLE IF NOT EXISTS guesses (
+      DROP TABLE IF EXISTS guesses
+    `;
+
+    await this.sql`
+      CREATE TABLE guesses (
         id UUID PRIMARY KEY,
         player_id TEXT NULL,
         direction TEXT NOT NULL CHECK (direction IN ('up', 'down')),
@@ -62,14 +62,12 @@ export class PostgresGuessRepository implements GuessRepository, GuessResolution
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         resolve_after TIMESTAMPTZ NOT NULL,
         resolved_at TIMESTAMPTZ NULL,
-        resolved_price DOUBLE PRECISION NULL,
-        result TEXT NULL CHECK (result IN ('win', 'loss')),
-        score_delta INTEGER NULL
+        resolved_price DOUBLE PRECISION NULL
       )
     `;
 
     await this.sql`
-      CREATE INDEX IF NOT EXISTS guesses_status_resolve_after_idx
+      CREATE INDEX guesses_status_resolve_after_idx
       ON guesses (status, resolve_after)
     `;
   }
@@ -87,7 +85,7 @@ export class PostgresGuessRepository implements GuessRepository, GuessResolution
   async findById(guessId: string) {
     const rows = await this.sql<GuessRow[]>`
       SELECT id, player_id, direction, entry_price, status, created_at, resolve_after,
-             resolved_at, resolved_price, result, score_delta
+             resolved_at, resolved_price
       FROM guesses
       WHERE id = ${guessId}
       LIMIT 1
@@ -101,27 +99,13 @@ export class PostgresGuessRepository implements GuessRepository, GuessResolution
       SET
         status = 'resolved',
         resolved_at = ${observedAt},
-        resolved_price = ${price},
-        result = CASE
-          WHEN direction = 'up' AND ${price} > entry_price THEN 'win'
-          WHEN direction = 'down' AND ${price} < entry_price THEN 'win'
-          ELSE 'loss'
-        END,
-        score_delta = CASE
-          WHEN direction = 'up' AND ${price} > entry_price THEN 1
-          WHEN direction = 'down' AND ${price} < entry_price THEN 1
-          ELSE -1
-        END
+        resolved_price = ${price}
       WHERE status = 'pending'
         AND resolve_after <= ${observedAt}
         AND entry_price <> ${price}
-      RETURNING id, result, score_delta
+      RETURNING id
     `;
 
-    return rows.map((row) => ({
-      id: row.id,
-      result: row.result,
-      scoreDelta: row.score_delta,
-    }));
+    return rows.map((row) => ({ id: row.id }));
   }
 }

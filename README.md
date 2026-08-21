@@ -14,9 +14,13 @@ This app lets players guess whether the BTC price will be higher or lower after 
 
 - The backend keeps the latest BTC/USD price and the timestamp of the most recent update in memory.
 
-- Pending guesses use PostgreSQL as the source of truth instead of being duplicated in an in-memory map. When a price update arrives, the intended resolution design queries indexed pending guesses whose `resolve_after` timestamp has passed and whose entry price differs from the new price. This keeps guess state available across backend restarts and avoids synchronizing an in-memory copy with the database.
+- Pending guesses use PostgreSQL as the source of truth instead of being duplicated in an in-memory map. When a price update arrives, the resolution design queries indexed pending guesses whose `resolve_after` timestamp has passed and whose entry price differs from the new price. This avoids synchronizing an in-memory copy with the database during one backend run.
 
 - Price updates are passed to a source-agnostic processor as `{ price, observedAt }`. Tests and simulations can call the processor directly; the Coinbase WebSocket adapter will later call the same method. `observedAt` is the exchange event timestamp used to decide whether `resolve_after` has passed.
+
+- Resolved guesses store `resolved_at` and `resolved_price`. The result and score change are derived from `direction`, `entry_price`, and `resolved_price` instead of being persisted as duplicate data.
+
+- This pet-project setup does not use database migrations. Every backend start drops and recreates the `guesses` table, so all guess data is intentionally lost on restart. A deployed version with persistent player scores would replace this initializer with versioned migrations before storing user data.
 
 - This database-query approach has a scalability limitation: if every backend instance consumes the same price stream, every instance can query the same eligible guesses and attempt to resolve them. Conditional updates inside a transaction can preserve correctness, but the duplicated queries still waste database capacity. If horizontal scaling becomes necessary, price processing should move to one elected resolver or a dedicated worker; alternatively, workers can claim disjoint batches with PostgreSQL row locking such as `FOR UPDATE SKIP LOCKED`.
 
