@@ -9,22 +9,33 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U epilot -d epilot"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
 
   backend:
     build:
       context: ./backend
+    command: ["bun", "--watch", "src/server.ts"]
     ports:
       - "3001:3001"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
     environment:
       PORT: "3001"
       HOST: "0.0.0.0"
       DATABASE_URL: "postgresql://epilot:epilot@postgres:5432/epilot"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 
   frontend:
     build:
       context: ./frontend
+    command: ["bun", "run", "dev", "--", "--port", "3000"]
     ports:
       - "3000:3000"
     environment:

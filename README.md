@@ -14,11 +14,15 @@ This app lets players guess whether the BTC price will be higher or lower after 
 
 - The backend keeps the latest BTC/USD price and the timestamp of the most recent update in memory.
 
+- Pending guesses use PostgreSQL as the source of truth instead of being duplicated in an in-memory map. When a price update arrives, the intended resolution design queries indexed pending guesses whose `resolve_after` timestamp has passed and whose entry price differs from the new price. This keeps guess state available across backend restarts and avoids synchronizing an in-memory copy with the database.
+
+- This database-query approach has a scalability limitation: if every backend instance consumes the same price stream, every instance can query the same eligible guesses and attempt to resolve them. Conditional updates inside a transaction can preserve correctness, but the duplicated queries still waste database capacity. If horizontal scaling becomes necessary, price processing should move to one elected resolver or a dedicated worker; alternatively, workers can claim disjoint batches with PostgreSQL row locking such as `FOR UPDATE SKIP LOCKED`.
+
 - The backend keeps one upstream WebSocket connection to Coinbase, and the frontend can poll backend state instead of holding its own live socket unless we later add live push.
 
 - Anonymous players are identified by a browser cookie that stores a generated player id, and that id is used to load the same score and guess history when the browser returns.
 
-- The backend and frontend are written in TypeScript, the backend runs on Bun, and the frontend is built as static files for S3, ideally with CloudFront in front of the bucket.
+- The backend and frontend are written in TypeScript. The backend runs on Bun and uses Hono for HTTP routing, middleware, and request validation. The frontend is built as static files for S3, ideally with CloudFront in front of the bucket.
 
 - The score starts at 0 for a new player and is persisted in the backend.
 

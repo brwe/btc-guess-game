@@ -1,5 +1,14 @@
 {
   "name": "epilot-challenge-backend",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "scripts": {
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@hono/zod-validator": "^0.9.0",
+    "hono": "^4.13.3",
+    "postgres": "^3.4.9",
+    "zod": "^4.4.3"
+  }
 }
