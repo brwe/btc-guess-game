@@ -16,7 +16,7 @@ This app lets players guess whether the BTC price will be higher or lower after 
 
 - Pending guesses use PostgreSQL as the source of truth instead of being duplicated in an in-memory map. When a price update arrives, the resolution design queries indexed pending guesses whose `resolve_after` timestamp has passed and whose entry price differs from the new price. This avoids synchronizing an in-memory copy with the database during one backend run.
 
-- Price updates are passed to a source-agnostic processor as `{ price, observedAt }`. Tests and simulations can call the processor directly; the Coinbase WebSocket adapter will later call the same method. `observedAt` is the exchange event timestamp used to decide whether `resolve_after` has passed.
+- Price updates are passed to a source-agnostic processor as `{ price, observedAt }`. Tests, simulations, and the Coinbase WebSocket adapter call the same method. `observedAt` is the exchange event timestamp used to decide whether `resolve_after` has passed.
 
 - Resolved guesses store `resolved_at` and `resolved_price`. The result and score change are derived from `direction`, `entry_price`, and `resolved_price` instead of being persisted as duplicate data.
 
@@ -45,6 +45,8 @@ docker compose up --build
 ```
 
 The guess duration is configured with `GUESS_DURATION_SECONDS` on the backend and defaults to `60`. For faster local testing, start the stack with `GUESS_DURATION_SECONDS=5 docker compose up --build`. The backend returns the resulting `resolveAfter` timestamp, which drives the frontend countdown and polling delay.
+
+The backend connects to Coinbase Exchange at `wss://ws-feed.exchange.coinbase.com` and subscribes to the unauthenticated `ticker_batch` channel for `BTC-USD`. Coinbase sends an update every five seconds when the latest trade price changes. The URL can be overridden with `COINBASE_WEBSOCKET_URL`, for example to use the Coinbase sandbox feed.
 
 Then open:
 
