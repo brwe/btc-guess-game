@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { createApi } from "../src/api";
 import type { GuessRepository, GuessRow, PendingGuess } from "../src/guessRepository";
+import { InMemoryLatestPriceStore } from "../src/latestPriceStore";
+import { PriceMessageProcessor } from "../src/priceMessageProcessor";
 
 const guessId = "6c3a2fc2-bcf5-4f5f-a755-21d91ff21973";
 const createdAt = new Date("2026-08-19T10:00:00.000Z");
@@ -87,6 +89,37 @@ describe("POST /api/guesses", () => {
     expect(inserted[0]?.id).toBe(body.guessId);
   });
 
+  test("uses the configured guess duration", async () => {
+    const inserted: PendingGuess[] = [];
+    const app = createApi({
+      guessRepository: {
+        async insert(guess) {
+          inserted.push(guess);
+        },
+        async findById() {
+          return null;
+        },
+      },
+      createId: () => guessId,
+      now: () => createdAt,
+      guessDurationSeconds: 5,
+    });
+
+    const response = await app.request("/api/guesses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ direction: "up", entryPrice: 59_321.25 }),
+    });
+
+    expect(response.status).toBe(201);
+    expect(await response.json()).toEqual({
+      guessId,
+      status: "pending",
+      resolveAfter: "2026-08-19T10:00:05.000Z",
+    });
+    expect(inserted[0]?.resolveAfter).toEqual(new Date("2026-08-19T10:00:05.000Z"));
+  });
+
   test.each([
     [{ direction: "sideways", entryPrice: 59_321.25 }, "direction must be 'up' or 'down'"],
     [{ direction: "down", entryPrice: 0 }, "entryPrice must be a positive number"],
@@ -113,6 +146,79 @@ describe("POST /api/guesses", () => {
 
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: "invalid JSON body" });
+  });
+});
+
+describe("GET /api/price", () => {
+  test("returns the latest stored BTC/USD price", async () => {
+    const latestPriceStore = new InMemoryLatestPriceStore();
+    latestPriceStore.set({
+      price: 62_345.67,
+      observedAt: new Date("2026-08-21T12:00:00.000Z"),
+    });
+    const app = createApi({
+      guessRepository: {
+        async insert() {},
+        async findById() { return null; },
+      },
+      latestPriceStore,
+    });
+
+    const response = await app.request("/api/price");
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      pair: "BTC/USD",
+      price: 62_345.67,
+      observedAt: "2026-08-21T12:00:00.000Z",
+    });
+  });
+
+  test("returns 503 before a price has been received", async () => {
+    const { app } = createTestContext();
+
+    const response = await app.request("/api/price");
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: "price not available" });
+  });
+});
+
+describe("POST /api/price-messages", () => {
+  test("processes a simulated message and makes it available as the latest price", async () => {
+    const latestPriceStore = new InMemoryLatestPriceStore();
+    const priceMessageProcessor = new PriceMessageProcessor({
+      async resolveEligible() {
+        return [{ id: guessId }];
+      },
+    }, latestPriceStore);
+    const app = createApi({
+      guessRepository: {
+        async insert() {},
+        async findById() { return null; },
+      },
+      latestPriceStore,
+      priceMessageProcessor,
+    });
+
+    const response = await app.request("/api/price-messages", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        price: 63_000,
+        observedAt: "2026-08-21T12:02:00.000Z",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      resolvedCount: 1,
+      resolvedGuessIds: [guessId],
+    });
+    expect(latestPriceStore.get()).toEqual({
+      price: 63_000,
+      observedAt: new Date("2026-08-21T12:02:00.000Z"),
+    });
   });
 });
 

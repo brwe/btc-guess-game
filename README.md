@@ -44,6 +44,8 @@ From `/Users/a2tirb/robofarm/epilot-challenge`, run:
 docker compose up --build
 ```
 
+The guess duration is configured with `GUESS_DURATION_SECONDS` on the backend and defaults to `60`. For faster local testing, start the stack with `GUESS_DURATION_SECONDS=5 docker compose up --build`. The backend returns the resulting `resolveAfter` timestamp, which drives the frontend countdown and polling delay.
+
 Then open:
 
 - Frontend: `http://localhost:3000`
@@ -62,4 +64,10 @@ If the timestamp is omitted, the simulator uses the current time. The command pr
 
 ## Local Docker Scaffold
 
-The frontend is a small React app that calls the backend hello-world endpoint and renders the JSON response.
+The React frontend displays the latest BTC/USD price, score, wins, and losses. A player can submit one `up` or `down` guess at a time. Both buttons are disabled while the guess is pending.
+
+The browser waits until the backend-provided `resolveAfter` timestamp, then polls the guess endpoint every two seconds until the backend resolves it. The active guess, anonymous player id, wins, and losses are stored in browser storage so refreshing the page does not discard the current browser session.
+
+The current score is derived as `wins - losses`. Persisting score in PostgreSQL and loading it by anonymous player id remains backend work; browser storage is only the current frontend implementation.
+
+The frontend reads the latest price from `GET /api/price`. During local development, `bun run simulate:price -- <price> [observed-at]` sends a price message through the running backend, updates the in-memory latest price, and resolves eligible guesses.

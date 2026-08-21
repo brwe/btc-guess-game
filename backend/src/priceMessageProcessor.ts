@@ -1,4 +1,5 @@
 import type { GuessResolutionRepository } from "./guessRepository";
+import type { LatestPriceWriter } from "./latestPriceStore";
 
 export type PriceMessage = {
   price: number;
@@ -11,7 +12,10 @@ export type PriceProcessingResult = {
 };
 
 export class PriceMessageProcessor {
-  constructor(private readonly guessRepository: GuessResolutionRepository) {}
+  constructor(
+    private readonly guessRepository: GuessResolutionRepository,
+    private readonly latestPriceStore?: LatestPriceWriter,
+  ) {}
 
   async process(message: PriceMessage): Promise<PriceProcessingResult> {
     if (!Number.isFinite(message.price) || message.price <= 0) {
@@ -21,6 +25,8 @@ export class PriceMessageProcessor {
     if (!(message.observedAt instanceof Date) || Number.isNaN(message.observedAt.getTime())) {
       throw new Error("observedAt must be a valid Date");
     }
+
+    this.latestPriceStore?.set(message);
 
     const resolvedGuesses = await this.guessRepository.resolveEligible(
       message.price,

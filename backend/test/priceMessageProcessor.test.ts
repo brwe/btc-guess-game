@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { GuessResolutionRepository, ResolvedGuess } from "../src/guessRepository";
 import { PriceMessageProcessor } from "../src/priceMessageProcessor";
+import { InMemoryLatestPriceStore } from "../src/latestPriceStore";
 
 describe("PriceMessageProcessor", () => {
   test("passes a price message to the repository and reports resolved guesses", async () => {
@@ -25,6 +26,23 @@ describe("PriceMessageProcessor", () => {
       resolvedCount: 2,
       resolvedGuessIds: ["guess-up", "guess-down"],
     });
+  });
+
+  test("stores the latest valid price message", async () => {
+    const latestPriceStore = new InMemoryLatestPriceStore();
+    const processor = new PriceMessageProcessor({
+      async resolveEligible() {
+        return [];
+      },
+    }, latestPriceStore);
+    const message = {
+      price: 62_000,
+      observedAt: new Date("2026-08-21T12:01:00.000Z"),
+    };
+
+    await processor.process(message);
+
+    expect(latestPriceStore.get()).toEqual(message);
   });
 
   test.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(

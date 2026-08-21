@@ -4,11 +4,16 @@ import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import type { GuessRepository, GuessRow } from "./guessRepository";
+import type { LatestPriceReader } from "./latestPriceStore";
+import type { PriceMessageProcessor } from "./priceMessageProcessor";
 
 type ApiDependencies = {
   guessRepository: GuessRepository;
+  latestPriceStore?: LatestPriceReader;
+  priceMessageProcessor?: PriceMessageProcessor;
   createId?: () => string;
   now?: () => Date;
+  guessDurationSeconds?: number;
 };
 
 const registerGuessSchema = z.object({
@@ -19,8 +24,11 @@ const registerGuessSchema = z.object({
 
 export function createApi({
   guessRepository,
+  latestPriceStore,
+  priceMessageProcessor,
   createId = () => crypto.randomUUID(),
   now = () => new Date(),
+  guessDurationSeconds = 60,
 }: ApiDependencies) {
   const app = new Hono();
 
@@ -46,6 +54,41 @@ export function createApi({
     return context.json({ message: "hello world from the backend" });
   });
 
+  app.get("/api/price", (context) => {
+    const latestPrice = latestPriceStore?.get() ?? null;
+
+    if (!latestPrice) {
+      return context.json({ error: "price not available" }, 503);
+    }
+
+    return context.json({
+      pair: "BTC/USD" as const,
+      price: latestPrice.price,
+      observedAt: latestPrice.observedAt.toISOString(),
+    });
+  });
+
+  app.post(
+    "/api/price-messages",
+    zValidator("json", z.object({
+      price: z.number().positive(),
+      observedAt: z.string().datetime().optional(),
+    })),
+    async (context) => {
+      if (!priceMessageProcessor) {
+        return context.json({ error: "price processor not available" }, 503);
+      }
+
+      const body = context.req.valid("json");
+      const result = await priceMessageProcessor.process({
+        price: body.price,
+        observedAt: body.observedAt ? new Date(body.observedAt) : now(),
+      });
+
+      return context.json(result);
+    },
+  );
+
   app.post(
     "/api/guesses",
     zValidator("json", registerGuessSchema, (result, context) => {
@@ -64,7 +107,7 @@ export function createApi({
       const body = context.req.valid("json");
       const guessId = createId();
       const createdAt = now();
-      const resolveAfter = new Date(createdAt.getTime() + 60_000);
+      const resolveAfter = new Date(createdAt.getTime() + guessDurationSeconds * 1_000);
       const playerId = typeof body.playerId === "string" && body.playerId.trim().length > 0
         ? body.playerId
         : null;

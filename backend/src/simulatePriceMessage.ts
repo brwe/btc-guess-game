@@ -1,29 +1,22 @@
-import postgres from "postgres";
-import { PostgresGuessRepository } from "./guessRepository";
-import { PriceMessageProcessor } from "./priceMessageProcessor";
-
 const [priceArgument, observedAtArgument] = Bun.argv.slice(2);
 
 if (!priceArgument) {
   throw new Error("Usage: bun run simulate:price -- <price> [observed-at]");
 }
 
-const databaseUrl = process.env.DATABASE_URL;
-if (!databaseUrl) {
-  throw new Error("DATABASE_URL is required");
-}
-
-const sql = postgres(databaseUrl, { max: 1 });
-const guessRepository = new PostgresGuessRepository(sql);
-const processor = new PriceMessageProcessor(guessRepository);
-
-try {
-  const result = await processor.process({
+const apiUrl = process.env.API_URL ?? "http://localhost:3001";
+const response = await fetch(`${apiUrl}/api/price-messages`, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({
     price: Number(priceArgument),
-    observedAt: observedAtArgument ? new Date(observedAtArgument) : new Date(),
-  });
+    observedAt: observedAtArgument ?? new Date().toISOString(),
+  }),
+});
+const result = await response.json();
 
-  console.log(JSON.stringify(result, null, 2));
-} finally {
-  await sql.end();
+if (!response.ok) {
+  throw new Error(`Price simulation failed with status ${response.status}: ${JSON.stringify(result)}`);
 }
+
+console.log(JSON.stringify(result, null, 2));

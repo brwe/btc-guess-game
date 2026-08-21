@@ -28,6 +28,7 @@ services:
       PORT: "3001"
       HOST: "0.0.0.0"
       DATABASE_URL: "postgresql://epilot:epilot@postgres:5432/epilot"
+      GUESS_DURATION_SECONDS: "${GUESS_DURATION_SECONDS:-60}"
     depends_on:
       postgres:
         condition: service_healthy
