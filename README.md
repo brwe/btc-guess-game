@@ -16,6 +16,8 @@ This app lets players guess whether the BTC price will be higher or lower after 
 
 - Pending guesses use PostgreSQL as the source of truth instead of being duplicated in an in-memory map. When a price update arrives, the intended resolution design queries indexed pending guesses whose `resolve_after` timestamp has passed and whose entry price differs from the new price. This keeps guess state available across backend restarts and avoids synchronizing an in-memory copy with the database.
 
+- Price updates are passed to a source-agnostic processor as `{ price, observedAt }`. Tests and simulations can call the processor directly; the Coinbase WebSocket adapter will later call the same method. `observedAt` is the exchange event timestamp used to decide whether `resolve_after` has passed.
+
 - This database-query approach has a scalability limitation: if every backend instance consumes the same price stream, every instance can query the same eligible guesses and attempt to resolve them. Conditional updates inside a transaction can preserve correctness, but the duplicated queries still waste database capacity. If horizontal scaling becomes necessary, price processing should move to one elected resolver or a dedicated worker; alternatively, workers can claim disjoint batches with PostgreSQL row locking such as `FOR UPDATE SKIP LOCKED`.
 
 - The backend keeps one upstream WebSocket connection to Coinbase, and the frontend can poll backend state instead of holding its own live socket unless we later add live push.
@@ -43,6 +45,16 @@ Then open:
 - Frontend: `http://localhost:3000`
 - Backend: `http://localhost:3001/api/hello`
 - Postgres: `localhost:5432`
+
+## Simulate a Price Update
+
+With the Docker stack running, pass a price and an optional ISO 8601 exchange timestamp to the source-agnostic price processor:
+
+```bash
+docker compose exec backend bun run simulate:price -- 62000 2026-08-21T12:01:00.000Z
+```
+
+If the timestamp is omitted, the simulator uses the current time. The command prints the number and ids of guesses resolved by that price update.
 
 ## Local Docker Scaffold
 

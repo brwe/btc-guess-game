@@ -27,12 +27,28 @@ export type GuessRow = {
   score_delta: number | null;
 };
 
+export type ResolvedGuess = {
+  id: string;
+  result: GuessResult;
+  scoreDelta: 1 | -1;
+};
+
+type ResolvedGuessRow = {
+  id: string;
+  result: GuessResult;
+  score_delta: 1 | -1;
+};
+
 export interface GuessRepository {
   insert(guess: PendingGuess): Promise<void>;
   findById(guessId: string): Promise<GuessRow | null>;
 }
 
-export class PostgresGuessRepository implements GuessRepository {
+export interface GuessResolutionRepository {
+  resolveEligible(price: number, observedAt: Date): Promise<ResolvedGuess[]>;
+}
+
+export class PostgresGuessRepository implements GuessRepository, GuessResolutionRepository {
   constructor(private readonly sql: postgres.Sql) {}
 
   async initialize() {
@@ -77,5 +93,35 @@ export class PostgresGuessRepository implements GuessRepository {
       LIMIT 1
     `;
     return rows[0] ?? null;
+  }
+
+  async resolveEligible(price: number, observedAt: Date) {
+    const rows = await this.sql<ResolvedGuessRow[]>`
+      UPDATE guesses
+      SET
+        status = 'resolved',
+        resolved_at = ${observedAt},
+        resolved_price = ${price},
+        result = CASE
+          WHEN direction = 'up' AND ${price} > entry_price THEN 'win'
+          WHEN direction = 'down' AND ${price} < entry_price THEN 'win'
+          ELSE 'loss'
+        END,
+        score_delta = CASE
+          WHEN direction = 'up' AND ${price} > entry_price THEN 1
+          WHEN direction = 'down' AND ${price} < entry_price THEN 1
+          ELSE -1
+        END
+      WHERE status = 'pending'
+        AND resolve_after <= ${observedAt}
+        AND entry_price <> ${price}
+      RETURNING id, result, score_delta
+    `;
+
+    return rows.map((row) => ({
+      id: row.id,
+      result: row.result,
+      scoreDelta: row.score_delta,
+    }));
   }
 }
