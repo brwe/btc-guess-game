@@ -9,11 +9,11 @@ import type { PriceMessageProcessor } from "./priceMessageProcessor";
 
 type ApiDependencies = {
   guessRepository: GuessRepository;
-  latestPriceStore?: LatestPriceReader;
-  priceMessageProcessor?: PriceMessageProcessor;
+  latestPriceStore: LatestPriceReader;
+  priceMessageProcessor: PriceMessageProcessor;
+  guessDurationSeconds: number;
   createId?: () => string;
   now?: () => Date;
-  guessDurationSeconds?: number;
 };
 
 const registerGuessSchema = z.object({
@@ -26,9 +26,9 @@ export function createApi({
   guessRepository,
   latestPriceStore,
   priceMessageProcessor,
+  guessDurationSeconds,
   createId = () => crypto.randomUUID(),
   now = () => new Date(),
-  guessDurationSeconds = 60,
 }: ApiDependencies) {
   const app = new Hono();
 
@@ -55,7 +55,7 @@ export function createApi({
   });
 
   app.get("/api/price", (context) => {
-    const latestPrice = latestPriceStore?.get() ?? null;
+    const latestPrice = latestPriceStore.get();
 
     if (!latestPrice) {
       return context.json({ error: "price not available" }, 503);
@@ -75,10 +75,6 @@ export function createApi({
       observedAt: z.string().datetime().optional(),
     })),
     async (context) => {
-      if (!priceMessageProcessor) {
-        return context.json({ error: "price processor not available" }, 503);
-      }
-
       const body = context.req.valid("json");
       const result = await priceMessageProcessor.process({
         price: body.price,

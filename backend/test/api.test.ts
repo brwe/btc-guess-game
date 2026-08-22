@@ -7,6 +7,20 @@ import { PriceMessageProcessor } from "../src/priceMessageProcessor";
 const guessId = "6c3a2fc2-bcf5-4f5f-a755-21d91ff21973";
 const createdAt = new Date("2026-08-19T10:00:00.000Z");
 
+function createRequiredApiDependencies(
+  latestPriceStore = new InMemoryLatestPriceStore(),
+) {
+  return {
+    latestPriceStore,
+    priceMessageProcessor: new PriceMessageProcessor({
+      async resolveEligible() {
+        return [];
+      },
+    }, latestPriceStore),
+    guessDurationSeconds: 60,
+  };
+}
+
 function createTestContext(existingRows: GuessRow[] = []) {
   const inserted: PendingGuess[] = [];
   const rows = [...existingRows];
@@ -30,6 +44,7 @@ function createTestContext(existingRows: GuessRow[] = []) {
     },
   };
   const app = createApi({
+    ...createRequiredApiDependencies(),
     guessRepository: repository,
     createId: () => guessId,
     now: () => createdAt,
@@ -71,6 +86,7 @@ describe("POST /api/guesses", () => {
     ];
     let nextGuessId = 0;
     const app = createApi({
+      ...createRequiredApiDependencies(),
       guessRepository: {
         async insert(guess) {
           inserted.push(guess);
@@ -109,6 +125,7 @@ describe("POST /api/guesses", () => {
   test("generates a UUID when no id factory is provided", async () => {
     const inserted: PendingGuess[] = [];
     const app = createApi({
+      ...createRequiredApiDependencies(),
       guessRepository: {
         async insert(guess) {
           inserted.push(guess);
@@ -135,6 +152,7 @@ describe("POST /api/guesses", () => {
   test("uses the configured guess duration", async () => {
     const inserted: PendingGuess[] = [];
     const app = createApi({
+      ...createRequiredApiDependencies(),
       guessRepository: {
         async insert(guess) {
           inserted.push(guess);
@@ -200,11 +218,11 @@ describe("GET /api/price", () => {
       observedAt: new Date("2026-08-21T12:00:00.000Z"),
     });
     const app = createApi({
+      ...createRequiredApiDependencies(latestPriceStore),
       guessRepository: {
         async insert() {},
         async findById() { return null; },
       },
-      latestPriceStore,
     });
 
     const response = await app.request("/api/price");
@@ -242,6 +260,7 @@ describe("POST /api/price-messages", () => {
       },
       latestPriceStore,
       priceMessageProcessor,
+      guessDurationSeconds: 60,
     });
 
     const response = await app.request("/api/price-messages", {
