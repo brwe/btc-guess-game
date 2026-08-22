@@ -3,9 +3,5 @@
 backend-test:
 	cd backend && bun install --frozen-lockfile && bun test
 
-
-fullstack-up:
-	GUESS_DURATION_SECONDS=5 docker compose up --build 
-
 fullstack-up-realtime:
-	COINBASE_TICKER_CHANNEL=ticker GUESS_DURATION_SECONDS=5 docker compose up --build
+	COINBASE_TICKER_CHANNEL=ticker GUESS_DURATION_SECONDS=60 docker compose up --build
