@@ -54,11 +54,6 @@ export function createApi({
 
   app.get("/health", (context) => context.text("ok"));
 
-  app.get("/api/hello", (context) => {
-    console.log("[api] GET /api/hello");
-    return context.json({ message: "hello world from the backend" });
-  });
-
   app.post(
     "/api/guesses",
     zValidator("json", registerGuessSchema, (result, context) => {
@@ -177,13 +172,11 @@ export function createApi({
         });
       }
       heartbeat = setInterval(() => enqueue({ type: "heartbeat", data: {} }), 5_000);
-
       await done;
     });
   });
 
   app.notFound((context) => context.text("Not found", 404));
-
   return app;
 }
 

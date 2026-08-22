@@ -53,6 +53,19 @@ function confirmSubscription(socket: FakeWebSocket) {
 }
 
 describe("CoinbaseTickerClient", () => {
+  test("shares one startup attempt between repeated start calls", async () => {
+    const { client, socket } = createContext();
+
+    const firstStart = client.start();
+    const secondStart = client.start();
+
+    expect(secondStart).toBe(firstStart);
+    confirmSubscription(socket);
+    await Promise.all([firstStart, secondStart]);
+    expect(socket.sent).toHaveLength(1);
+    client.stop();
+  });
+
   test("subscribes to ticker_batch and accepts Coinbase's ticker_1000 acknowledgement", async () => {
     const { client, socket } = createContext();
 

@@ -43,7 +43,6 @@ export class CoinbaseTickerClient {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private processing = Promise.resolve();
   private lastObservedAtMs: number | null = null;
-  private started = false;
   private startPromise: Promise<void> | null = null;
   private startupState: StartupState | null = null;
 
@@ -61,21 +60,26 @@ export class CoinbaseTickerClient {
   }
 
   start(): Promise<void> {
-    if (this.started) return this.startPromise ?? Promise.resolve();
-    this.started = true;
-    this.startPromise = new Promise<void>((resolve, reject) => {
-      this.startupState = {
-        resolve,
-        reject,
-        timeout: setTimeout(() => {
-          this.failStartup(new Error(
-            `Coinbase WebSocket did not confirm the subscription within ${this.startupTimeoutMs}ms`,
-          ));
-        }, this.startupTimeoutMs),
-      };
-      this.connect();
+    if (this.startPromise) return this.startPromise;
+
+    let resolveStart!: () => void;
+    let rejectStart!: (error: Error) => void;
+    const startPromise = new Promise<void>((resolve, reject) => {
+      resolveStart = resolve;
+      rejectStart = reject;
     });
-    return this.startPromise;
+    this.startPromise = startPromise;
+    this.startupState = {
+      resolve: resolveStart,
+      reject: rejectStart,
+      timeout: setTimeout(() => {
+        this.failStartup(new Error(
+          `Coinbase WebSocket did not confirm the subscription within ${this.startupTimeoutMs}ms`,
+        ));
+      }, this.startupTimeoutMs),
+    };
+    this.connect();
+    return startPromise;
   }
 
   stop() {
@@ -83,7 +87,6 @@ export class CoinbaseTickerClient {
       this.failStartup(new Error("Coinbase WebSocket stopped during startup"));
       return;
     }
-    this.started = false;
     this.startPromise = null;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
@@ -94,7 +97,7 @@ export class CoinbaseTickerClient {
   }
 
   private connect() {
-    if (!this.started) return;
+    if (!this.startPromise) return;
 
     let socket: WebSocket;
     try {
@@ -148,7 +151,7 @@ export class CoinbaseTickerClient {
 
     socket.addEventListener("close", () => {
       if (this.socket === socket) this.socket = null;
-      if (!this.started) return;
+      if (!this.startPromise) return;
       if (this.failStartup(new Error(
         "Coinbase WebSocket closed before confirming the subscription",
       ))) return;
@@ -177,7 +180,7 @@ export class CoinbaseTickerClient {
   }
 
   private scheduleReconnect() {
-    if (!this.started || this.reconnectTimer) return;
+    if (!this.startPromise || this.reconnectTimer) return;
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.connect();
@@ -204,7 +207,6 @@ export class CoinbaseTickerClient {
 
     clearTimeout(startupState.timeout);
     this.startupState = null;
-    this.started = false;
     this.startPromise = null;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
