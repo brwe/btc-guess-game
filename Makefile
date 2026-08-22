@@ -1,7 +1,7 @@
 .PHONY: backend-test
 
 backend-test:
-	cd backend && bun test
+	cd backend && bun install --frozen-lockfile && bun test
 
 
 fullstack-up:

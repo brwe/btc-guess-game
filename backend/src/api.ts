@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
+import { PendingGuessConflictError } from "./guessRepository";
 import type { GuessRepository, GuessRow } from "./guessRepository";
 import type { LatestPriceReader } from "./latestPriceStore";
 import type { PriceMessageProcessor } from "./priceMessageProcessor";
@@ -39,6 +40,10 @@ export function createApi({
   }));
 
   app.onError((error, context) => {
+    if (error instanceof PendingGuessConflictError) {
+      return context.json({ error: error.message }, 409);
+    }
+
     if (error instanceof HTTPException && error.status === 400) {
       return context.json({ error: "invalid JSON body" }, 400);
     }

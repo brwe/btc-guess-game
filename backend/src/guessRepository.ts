@@ -5,7 +5,7 @@ export type GuessStatus = "pending" | "resolved";
 
 export type PendingGuess = {
   id: string;
-  playerId: string | null;
+  playerId: string;
   direction: Direction;
   entryPrice: number;
   createdAt: Date;
@@ -14,7 +14,7 @@ export type PendingGuess = {
 
 export type GuessRow = {
   id: string;
-  player_id: string | null;
+  player_id: string;
   direction: Direction;
   entry_price: number;
   status: GuessStatus;
@@ -28,9 +28,18 @@ export type ResolvedGuess = {
   id: string;
 };
 
+export class PendingGuessConflictError extends Error {
+  constructor() {
+    super("player already has a pending guess");
+    this.name = "PendingGuessConflictError";
+  }
+}
+
 type ResolvedGuessRow = {
   id: string;
 };
+
+const pendingGuessConstraint = "guesses_one_pending_per_player_idx";
 
 export interface GuessRepository {
   insert(guess: PendingGuess): Promise<void>;
@@ -46,6 +55,7 @@ export class PostgresGuessRepository implements GuessRepository, GuessResolution
 
   async initialize({ reset = false }: { reset?: boolean } = {}) {
     if (reset) {
+      console.log("############ WARNING! guesses TABLE IS DROPPED! ")
       await this.sql`
         DROP TABLE IF EXISTS guesses
       `;
@@ -54,7 +64,7 @@ export class PostgresGuessRepository implements GuessRepository, GuessResolution
     await this.sql`
       CREATE TABLE IF NOT EXISTS guesses (
         id UUID PRIMARY KEY,
-        player_id TEXT NULL,
+        player_id TEXT NOT NULL,
         direction TEXT NOT NULL CHECK (direction IN ('up', 'down')),
         entry_price DOUBLE PRECISION NOT NULL,
         status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'resolved')),
@@ -66,19 +76,38 @@ export class PostgresGuessRepository implements GuessRepository, GuessResolution
     `;
 
     await this.sql`
+      ALTER TABLE guesses
+      ALTER COLUMN player_id SET NOT NULL
+    `;
+
+    await this.sql`
       CREATE INDEX IF NOT EXISTS guesses_status_resolve_after_idx
       ON guesses (status, resolve_after)
+    `;
+
+    await this.sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS guesses_one_pending_per_player_idx
+      ON guesses (player_id)
+      WHERE status = 'pending'
     `;
   }
 
   async insert(guess: PendingGuess) {
-    await this.sql`
-      INSERT INTO guesses (id, player_id, direction, entry_price, status, created_at, resolve_after)
-      VALUES (
-        ${guess.id}, ${guess.playerId}, ${guess.direction}, ${guess.entryPrice},
-        'pending', ${guess.createdAt}, ${guess.resolveAfter}
-      )
-    `;
+    try {
+      await this.sql`
+        INSERT INTO guesses (id, player_id, direction, entry_price, status, created_at, resolve_after)
+        VALUES (
+          ${guess.id}, ${guess.playerId}, ${guess.direction}, ${guess.entryPrice},
+          'pending', ${guess.createdAt}, ${guess.resolveAfter}
+        )
+      `;
+    } catch (error) {
+      if (isUniqueViolation(error, pendingGuessConstraint)) {
+        throw new PendingGuessConflictError();
+      }
+
+      throw error;
+    }
   }
 
   async findById(guessId: string) {
@@ -107,4 +136,13 @@ export class PostgresGuessRepository implements GuessRepository, GuessResolution
 
     return rows.map((row) => ({ id: row.id }));
   }
+}
+
+function isUniqueViolation(error: unknown, constraintName: string) {
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+
+  const postgresError = error as { code?: unknown; constraint_name?: unknown };
+  return postgresError.code === "23505" && postgresError.constraint_name === constraintName;
 }

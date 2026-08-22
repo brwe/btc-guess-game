@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createApi } from "../src/api";
+import { PendingGuessConflictError } from "../src/guessRepository";
 import type { GuessRepository, GuessRow, PendingGuess } from "../src/guessRepository";
 import { InMemoryLatestPriceStore } from "../src/latestPriceStore";
 import { PriceMessageProcessor } from "../src/priceMessageProcessor";
@@ -89,6 +90,10 @@ describe("POST /api/guesses", () => {
       ...createRequiredApiDependencies(),
       guessRepository: {
         async insert(guess) {
+          if (inserted.some((existing) => existing.playerId === guess.playerId)) {
+            throw new PendingGuessConflictError();
+          }
+
           inserted.push(guess);
         },
         async findById() {
