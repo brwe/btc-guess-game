@@ -28,7 +28,7 @@ This app lets players guess whether the BTC price will be higher or lower after 
 
 - The backend keeps one upstream WebSocket connection to Coinbase, and the frontend can poll backend state instead of holding its own live socket unless we later add live push.
 
-- Anonymous players are identified by a browser cookie that stores a generated player id, and that id is used to load the same score and guess history when the browser returns.
+- Anonymous players are identified by a generated player id stored in browser local storage, and that id is used to load the same score and guess history when the browser returns.
 
 - The backend and frontend are written in TypeScript. The backend runs on Bun and uses Hono for HTTP routing, middleware, and request validation. The frontend is built as static files for S3, ideally with CloudFront in front of the bucket.
 
@@ -75,6 +75,22 @@ The browser waits until the backend-provided `resolveAfter` timestamp, then poll
 The backend derives wins and losses from resolved guesses and returns the current score as `wins - losses`. It also determines whether each resolved guess was won or lost. This keeps all game calculations authoritative even if polling requests overlap or the application is open in multiple browser tabs.
 
 The frontend reads the latest price from `GET /api/price`. During local development, `bun run simulate:price -- <price> [observed-at]` sends a price message through the running backend, updates the in-memory latest price, and resolves eligible guesses.
+
+## Realtime Updates and Polling Decision
+
+The displayed market price and a guess's settlement status are separate resources with independent timing. There are three relevant prices:
+
+- The displayed price is the latest value fetched periodically from `GET /api/price`.
+- The entry price is the backend's price snapshot when it accepts the guess. It is immutable and returned by `POST /api/guesses`.
+- The resolution price is an eligible Coinbase price received after `resolve_after` whose value differs from the entry price.
+
+After a player submits `up` or `down`, the frontend moves through `submitting`, `pending countdown`, `awaiting settlement`, and finally `won` or `lost`. Market prices received before `resolve_after` update the displayed ticker but cannot resolve the guess. After the countdown reaches zero, the frontend polls the player's latest guess every two seconds until the backend reports it as resolved, then reloads the backend-calculated score. Because price polling and guess polling are independent, the ticker may visibly change shortly before the guess status changes. A visible price change is never used by the frontend to infer a result.
+
+Polling was chosen deliberately for this project. It is simple, survives refreshes and temporary disconnections, and restores state directly from PostgreSQL. The frontend permits only one guess-status request at a time, starts polling only when settlement becomes possible, stops after resolution, and treats every response as authoritative.
+
+Server-Sent Events or WebSockets could reduce update latency, but they solve only the connection between one backend instance and one browser. In a multi-instance deployment, the instance that resolves a guess may not hold that player's browser connection. Correct cross-instance delivery would therefore also require shared Pub/Sub such as PostgreSQL `LISTEN/NOTIFY`, Redis, or a message broker. Reliable delivery may additionally require reconnection handling, heartbeats, missed-event recovery, and a transactional outbox so a committed resolution cannot lose its notification.
+
+If realtime delivery is introduced later, streamed events should remain disposable notifications rather than the source of truth. A `guess-resolved` event would tell the frontend to reload the latest guess and score through REST. The browser would also reload those resources whenever the stream reconnects. This hybrid snapshot-plus-notification model recovers safely from missed or duplicate events.
 
 ## Deploy to AWS
 
@@ -176,13 +192,14 @@ TODOS:
   - ~~stale state frontend if db was dropped~~ -> don't do
 
 
-4. Entry price is controlled by the client
-The browser sends entryPrice. A malicious or merely stale client can submit a price unrelated to the backend’s current price.
-There is also a timing race between displaying a price and submitting the guess. The backend should choose the authoritative entry price when inserting the guess; the client should send only:
+4. ~~Entry price is controlled by the client~~ -> solved by letting the backend snapshot and return the authoritative entry price. The client sends only:
+
+```json
 {
   "playerId": "...",
   "direction": "up"
 }
+```
 
 
 5. ~~Frontend polling can count a result twice~~ -> solved by making the backend authoritative for outcomes and score. The frontend also permits only one resolution request at a time and assigns the returned score instead of incrementing it.
