@@ -1,8 +1,9 @@
 :root {
-  color: #172018;
-  background: #f4f1e8;
-  font-family: Georgia, "Times New Roman", serif;
+  color: #292929;
+  background: #f3f3f3;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-synthesis: none;
+  text-rendering: optimizeLegibility;
 }
 
 * {
@@ -15,11 +16,8 @@ body {
   margin: 0;
   display: grid;
   place-items: center;
-  background:
-    linear-gradient(rgba(23, 32, 24, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(23, 32, 24, 0.04) 1px, transparent 1px),
-    #f4f1e8;
-  background-size: 32px 32px;
+  padding: 24px;
+  background: #f3f3f3;
 }
 
 button {
@@ -27,83 +25,86 @@ button {
 }
 
 .game {
-  width: min(520px, calc(100vw - 32px));
-  padding: 48px 40px;
+  width: 480px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 32px;
   text-align: center;
-  background: #fffdf5;
-  border: 2px solid #172018;
-  box-shadow: 10px 10px 0 #172018;
+  background: #fff;
+  border-radius: 28px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 4%);
 }
 
 .label {
-  margin: 0 0 10px;
-  font-family: "Courier New", monospace;
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.18em;
+  margin: 0 0 16px;
+  color: #737373;
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
 }
 
 h1 {
-  margin: 0 0 30px;
-  font-size: clamp(2.3rem, 10vw, 4rem);
-  font-weight: 400;
+  margin: 0 0 32px;
+  color: #292929;
+  font-size: clamp(2.6rem, 11vw, 4rem);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: -0.055em;
   line-height: 1;
+  white-space: nowrap;
 }
 
 .guess-card {
-  margin: 0 0 30px;
-  padding: 20px;
-  border: 2px solid #172018;
-  background: #f4f1e8;
+  position: relative;
+  height: 190px;
+  margin: 0 0 28px;
+  padding: 20px 22px;
   text-align: left;
-}
-
-.guess-card.pending {
-  box-shadow: 5px 5px 0 #172018;
-}
-
-.guess-card.resolved.won {
-  box-shadow: 5px 5px 0 #28734b;
-}
-
-.guess-card.resolved.lost {
-  box-shadow: 5px 5px 0 #bb3e35;
+  background: #f5f5f5;
+  border-radius: 20px;
 }
 
 .guess-card-title,
 .resolved-direction {
   margin: 0;
-  font-family: "Courier New", monospace;
+  color: #777;
 }
 
 .guess-card-title {
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.14em;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 
 .guess-card .direction,
 .guess-card .result {
   display: block;
-  margin: 6px 0 16px;
-  font-size: 1.7rem;
+  margin: 6px 0 18px;
+  color: #292929;
+  font-size: 1.65rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
 }
 
 .guess-card.resolved.won .result {
-  color: #28734b;
+  color: #287a50;
 }
 
 .guess-card.resolved.lost .result {
-  color: #bb3e35;
+  color: #b74943;
 }
 
 .resolved-direction {
-  margin: -10px 0 16px;
-  font-size: 0.8rem;
+  margin: -12px 0 18px;
+  font-size: 0.86rem;
 }
 
 .guess-card dl {
+  position: absolute;
+  right: 22px;
+  bottom: 20px;
+  left: 22px;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
@@ -115,91 +116,137 @@ h1 {
 }
 
 .guess-card dl div {
-  padding-top: 10px;
-  border-top: 1px solid #9a9b91;
+  padding-top: 12px;
+  border-top: 1px solid #dedede;
 }
 
 .guess-card dt {
-  margin-bottom: 4px;
-  font-family: "Courier New", monospace;
-  font-size: 0.7rem;
-  text-transform: uppercase;
+  margin-bottom: 5px;
+  color: #818181;
+  font-size: 0.75rem;
+  font-weight: 500;
 }
 
 .guess-card dd {
   margin: 0;
-  font-weight: 700;
+  font-size: 0.98rem;
+  font-weight: 650;
 }
 
 .score {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 4px 18px;
-  margin-bottom: 32px;
-  font-family: "Courier New", monospace;
+  gap: 3px 18px;
+  margin-bottom: 30px;
+  color: #7a7a7a;
+  font-size: 0.88rem;
+}
+
+.score-label {
+  grid-column: 1 / -1;
+  margin-bottom: 2px;
+  color: #818181;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 .score strong {
   grid-column: 1 / -1;
-  font-family: Georgia, "Times New Roman", serif;
+  margin-bottom: 2px;
+  color: #292929;
   font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: -0.04em;
 }
 
 .actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 14px;
+  margin-bottom: 28px;
 }
 
 .actions button {
-  min-height: 70px;
-  border: 2px solid #172018;
-  color: #fffdf5;
+  min-height: 64px;
+  border: 0;
+  border-radius: 999px;
+  color: #303030;
+  background: #f1f1f1;
   cursor: pointer;
-  font-size: 1.35rem;
-  font-weight: 700;
-  transition: transform 120ms ease, box-shadow 120ms ease;
+  font-size: 1.12rem;
+  font-weight: 650;
+  transition: background-color 140ms ease, transform 140ms ease;
 }
 
 .actions button:not(:disabled):hover {
-  transform: translate(-2px, -2px);
-  box-shadow: 4px 4px 0 #172018;
+  background: #e8e8e8;
+  transform: translateY(-1px);
 }
 
-.actions .up {
-  background: #28734b;
+.actions button:not(:disabled):active {
+  transform: translateY(0);
 }
 
-.actions .down {
-  background: #bb3e35;
+.actions .up:not(:disabled):hover {
+  color: #236b47;
+  background: #eaf4ee;
+}
+
+.actions .down:not(:disabled):hover {
+  color: #9d3e39;
+  background: #f8eceb;
+}
+
+.actions button:focus-visible {
+  outline: 3px solid rgb(41 41 41 / 18%);
+  outline-offset: 3px;
 }
 
 .actions button:disabled {
-  color: #eceae2;
-  background: #999b96;
-  border-color: #737670;
+  color: #aaa;
+  background: #f6f6f6;
   cursor: not-allowed;
 }
 
 .status,
 .error {
-  margin: 24px 0 0;
-  font-family: "Courier New", monospace;
+  margin: 20px 0 0;
   font-size: 0.86rem;
   line-height: 1.5;
 }
 
+.status {
+  color: #777;
+  min-height: 1.5em;
+}
+
 .status:empty {
-  display: none;
+  visibility: hidden;
 }
 
 .error {
-  color: #9c211b;
+  color: #a43d38;
 }
 
 @media (max-width: 520px) {
+  body {
+    padding: 12px;
+  }
+
   .game {
-    padding: 36px 22px;
-    box-shadow: 6px 6px 0 #172018;
+    padding: 28px 22px;
+    border-radius: 24px;
+  }
+
+  .guess-card {
+    padding: 18px;
+  }
+
+  .guess-card dl {
+    right: 18px;
+    bottom: 18px;
+    left: 18px;
   }
 }

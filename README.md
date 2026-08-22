@@ -49,11 +49,11 @@ bun run destroy
 
 The application uses three communication mechanisms, each for a distinct purpose:
 
-| Abbreviation | Mechanism | Direction | Purpose |
-| --- | --- | --- | --- |
-| `WS` | WebSocket | Coinbase → Backend | Continuous BTC/USD price updates |
-| `SSE` | Server-Sent Events | Backend → Frontend | Live price updates and guess-resolution notifications |
-| `REST` | REST API over HTTP | Frontend ↔ Backend | Submit commands and load authoritative snapshots |
+| Abbreviation | Mechanism          | Direction          | Purpose                                               |
+| ------------ | ------------------ | ------------------ | ----------------------------------------------------- |
+| `WS`         | WebSocket          | Coinbase → Backend | Continuous BTC/USD price updates                      |
+| `SSE`        | Server-Sent Events | Backend → Frontend | Live price updates and guess-resolution notifications |
+| `REST`       | REST API over HTTP | Frontend ↔ Backend | Submit commands and load authoritative snapshots      |
 
 ### Price flow
 
@@ -187,6 +187,7 @@ TODOS:
   - code review
   - ~~stale state frontend if db was dropped~~ -> don't do
   - ~~the game would be more fun if one could see the graph~~ -> don't do
+  - ~~fix vite reconnect issues when backen goes down~~ -> later
 
 
 4. ~~Entry price is controlled by the client~~ -> solved by letting the backend snapshot and return the authoritative entry price. The client sends only:

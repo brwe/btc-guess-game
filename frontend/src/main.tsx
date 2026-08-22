@@ -215,6 +215,15 @@ function App() {
       <p className="label">BTC / USD</p>
       <h1>{latestPrice ? `$${latestPrice.price.toLocaleString("en-US")}` : "Waiting for price"}</h1>
 
+      <div className="actions">
+        <button className="up" disabled={waiting || !latestPrice} onClick={() => registerGuess("up")}>
+          Up
+        </button>
+        <button className="down" disabled={waiting || !latestPrice} onClick={() => registerGuess("down")}>
+          Down
+        </button>
+      </div>
+
       {activeGuess ? (
         <section className="guess-card pending" aria-live="polite">
           <p className="guess-card-title">Current guess</p>
@@ -249,18 +258,10 @@ function App() {
       ) : null}
 
       <div className="score" aria-label="Score">
+        <span className="score-label">Score</span>
         <strong>{score.score}</strong>
         <span>{score.wins} wins</span>
         <span>{score.losses} losses</span>
-      </div>
-
-      <div className="actions">
-        <button className="up" disabled={waiting || !latestPrice} onClick={() => registerGuess("up")}>
-          Up
-        </button>
-        <button className="down" disabled={waiting || !latestPrice} onClick={() => registerGuess("down")}>
-          Down
-        </button>
       </div>
 
       <p className="status">
