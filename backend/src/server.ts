@@ -30,6 +30,7 @@ const sql = databaseUrl
     database: requiredEnvironmentVariable("DB_NAME"),
     username: requiredEnvironmentVariable("DB_USER"),
     password: requiredEnvironmentVariable("DB_PASSWORD"),
+    ssl: "require",
     max: 5,
   });
 const guessRepository = new PostgresGuessRepository(sql);

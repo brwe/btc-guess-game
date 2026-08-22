@@ -13,7 +13,7 @@ if (account) {
   );
 }
 
-new EpilotChallengeStack(app, "EpilotChallengeStack", {
+new EpilotChallengeStack(app, "EpilotChallengeStackTls", {
   env: {
     account,
     region,

@@ -3,11 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "cdk": "cdk --profile epilot",
-    "bootstrap": "cdk bootstrap --profile epilot",
-    "synth": "cdk synth --profile epilot",
-    "deploy": "cdk deploy --profile epilot",
-    "destroy": "cdk destroy --profile epilot"
+    "cdk": "cdk",
+    "bootstrap": "cdk bootstrap",
+    "synth": "cdk synth",
+    "deploy": "cdk deploy",
+    "destroy": "cdk destroy"
   },
   "dependencies": {
     "aws-cdk-lib": "^2.266.0",

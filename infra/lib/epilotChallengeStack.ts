@@ -18,6 +18,7 @@ import {
   aws_s3 as s3,
   aws_s3_deployment as s3deploy,
 } from "aws-cdk-lib";
+import * as cr from "aws-cdk-lib/custom-resources";
 import { Construct } from "constructs";
 
 export class EpilotChallengeStack extends Stack {
@@ -39,12 +40,17 @@ export class EpilotChallengeStack extends Stack {
           subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
           cidrMask: 24,
         },
+        {
+          name: "origin",
+          subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
+          cidrMask: 24,
+        },
       ],
     });
 
     const database = new rds.DatabaseInstance(this, "Database", {
       vpc,
-      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
+      vpcSubnets: { subnetGroupName: "database" },
       engine: rds.DatabaseInstanceEngine.postgres({
         version: rds.PostgresEngineVersion.VER_16,
       }),
@@ -110,12 +116,12 @@ export class EpilotChallengeStack extends Stack {
 
     const loadBalancer = new elbv2.ApplicationLoadBalancer(this, "LoadBalancer", {
       vpc,
-      internetFacing: true,
-      vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
+      internetFacing: false,
+      vpcSubnets: { subnetGroupName: "origin" },
     });
     const listener = loadBalancer.addListener("Http", {
       port: 80,
-      open: true,
+      open: false,
     });
     listener.addTargets("Backend", {
       port: 3001,
@@ -127,7 +133,6 @@ export class EpilotChallengeStack extends Stack {
         healthyHttpCodes: "200",
       },
     });
-
     const frontendBucket = new s3.Bucket(this, "FrontendBucket", {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       encryption: s3.BucketEncryption.S3_MANAGED,
@@ -144,7 +149,7 @@ export class EpilotChallengeStack extends Stack {
       },
       additionalBehaviors: {
         "api/*": {
-          origin: new origins.LoadBalancerV2Origin(loadBalancer, {
+          origin: origins.VpcOrigin.withApplicationLoadBalancer(loadBalancer, {
             protocolPolicy: cloudfront.OriginProtocolPolicy.HTTP_ONLY,
           }),
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.HTTPS_ONLY,
@@ -160,6 +165,32 @@ export class EpilotChallengeStack extends Stack {
         ttl: Duration.seconds(0),
       })),
     });
+    const getVpcOriginSecurityGroup = new cr.AwsCustomResource(this, "GetVpcOriginSecurityGroup", {
+      installLatestAwsSdk: false,
+      onCreate: {
+        service: "ec2",
+        action: "describeSecurityGroups",
+        parameters: {
+          Filters: [
+            { Name: "vpc-id", Values: [vpc.vpcId] },
+            { Name: "group-name", Values: ["CloudFront-VPCOrigins-Service-SG"] },
+          ],
+        },
+        physicalResourceId: cr.PhysicalResourceId.of("CloudFront-VPCOrigins-Service-SG"),
+      },
+      policy: cr.AwsCustomResourcePolicy.fromSdkCalls({ resources: ["*"] }),
+    });
+    getVpcOriginSecurityGroup.node.addDependency(distribution);
+    const vpcOriginSecurityGroup = ec2.SecurityGroup.fromSecurityGroupId(
+      this,
+      "VpcOriginSecurityGroup",
+      getVpcOriginSecurityGroup.getResponseField("SecurityGroups.0.GroupId"),
+    );
+    loadBalancer.connections.allowFrom(
+      vpcOriginSecurityGroup,
+      ec2.Port.tcp(80),
+      "Allow HTTP only from this VPC's CloudFront origins",
+    );
 
     new s3deploy.BucketDeployment(this, "FrontendDeployment", {
       destinationBucket: frontendBucket,

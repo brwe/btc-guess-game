@@ -92,13 +92,15 @@ Streamed guess events remain disposable notifications rather than the source of 
 
 The CDK stack in `infra/` creates:
 
-- A two-AZ VPC with public subnets and isolated database subnets, without NAT gateways.
+- A two-AZ VPC with public task subnets plus separate isolated database and origin subnets, without NAT gateways.
 - One public ECS Fargate task with `0.25` vCPU and `0.5 GB` memory.
-- An internet-facing Application Load Balancer.
+- An internal Application Load Balancer exposed only through a CloudFront VPC origin.
 - A private, encrypted, Single-AZ PostgreSQL `db.t4g.micro` RDS instance with 20 GB GP3 storage.
 - A private S3 frontend bucket and CloudFront distribution.
-- CloudFront routing from `/api/*` to the load balancer and all other paths to S3.
+- CloudFront routing from `/api/*` to the private load balancer and all other paths to S3.
 - A generated Secrets Manager database credential injected into the ECS task.
+
+The load balancer has no public address. Its security group accepts HTTP only from the service-managed security group that CloudFront creates for VPC origins, so the API cannot be reached by bypassing the distribution. The ECS task remains in a public subnet solely to reach Coinbase without a NAT gateway; it accepts application traffic only from the load balancer security group. Backend connections to RDS use TLS, as required by the default PostgreSQL 16 RDS configuration.
 
 Prerequisites are Docker, Bun, AWS credentials, and a CDK-bootstrapped AWS account. The default deployment region is `eu-central-1`.
 
@@ -109,7 +111,7 @@ CDK uses the standard AWS SDK credential chain. Do not put AWS access keys in th
 1. For an IAM access key created for local development, store it in the AWS CLI credentials file:
 
    ```bash
-   aws configure --profile epilot
+   aws configure
    ```
 
    `aws configure` writes the credentials to `~/.aws/credentials` and configuration to `~/.aws/config`; neither file belongs in the project.
@@ -119,10 +121,10 @@ CDK uses the standard AWS SDK credential chain. Do not put AWS access keys in th
 Confirm the selected identity and account before deploying:
 
 ```bash
-aws sts get-caller-identity --profile epilot
+aws sts get-caller-identity
 ```
 
-The infrastructure package scripts and every AWS CLI example below select `--profile epilot` explicitly, so exporting `AWS_PROFILE` is not required.
+The infrastructure scripts use the standard AWS credential chain. To use a named profile instead of `default`, prefix commands with `AWS_PROFILE`, for example `AWS_PROFILE=epilot bun run deploy`.
 
 ### Deploy
 
@@ -144,8 +146,7 @@ The deployment outputs `ApplicationUrl`, which is the public CloudFront URL. The
    aws cloudformation describe-stacks \
      --stack-name EpilotChallengeStack \
      --query "Stacks[0].Outputs[?OutputKey=='ApplicationUrl'].OutputValue" \
-     --output text \
-     --profile epilot
+     --output text
    ```
 
 2. Open `ApplicationUrl`. CloudFront can take several minutes to finish distributing a new deployment.
@@ -156,8 +157,7 @@ The deployment outputs `ApplicationUrl`, which is the public CloudFront URL. The
    APPLICATION_URL=$(aws cloudformation describe-stacks \
      --stack-name EpilotChallengeStack \
      --query "Stacks[0].Outputs[?OutputKey=='ApplicationUrl'].OutputValue" \
-     --output text \
-     --profile epilot)
+     --output text)
    curl "$APPLICATION_URL/health"
    curl "$APPLICATION_URL/api/price"
    ```
@@ -182,10 +182,11 @@ TODOS:
   - ~~migration handling~~ -> don't do
   - ~~authorizaton and authentication~~ -> don't do
   - deployment 
-  - design
+  - ~~design~~ -> don't do
   - documentation
   - code review
   - ~~stale state frontend if db was dropped~~ -> don't do
+  - ~~the game would be more fun if one could see the graph~~ -> don't do
 
 
 4. ~~Entry price is controlled by the client~~ -> solved by letting the backend snapshot and return the authoritative entry price. The client sends only:
