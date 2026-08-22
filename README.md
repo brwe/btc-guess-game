@@ -10,7 +10,7 @@ This app lets players guess whether the BTC price will be higher or lower after 
 
 - If the exchange pair changes, both the displayed price and the resolution logic need to use the same pair to keep guesses fair.
 
-- The backend subscribes to Coinbase `ticker_batch` instead of `ticker` so the app uses fewer live updates and keeps infrastructure cost lower; if we need a finer-grained stream later, we can switch to one.
+- The backend uses Coinbase `ticker_batch` by default so the app receives at most one changed price update every five seconds. Set `COINBASE_TICKER_CHANNEL=ticker` to receive higher-frequency updates when matches happen; this increases database resolution checks and SSE traffic.
 
 - The backend keeps the latest BTC/USD price and the timestamp of the most recent update in memory.
 
@@ -48,13 +48,19 @@ docker compose up --build
 
 The guess duration is configured with `GUESS_DURATION_SECONDS` on the backend and defaults to `60`. For faster local testing, start the stack with `GUESS_DURATION_SECONDS=5 docker compose up --build`. The backend returns the resulting `resolveAfter` timestamp, which drives the frontend countdown.
 
-The backend connects to Coinbase Exchange at `wss://ws-feed.exchange.coinbase.com` and subscribes to the unauthenticated `ticker_batch` channel for `BTC-USD`. Coinbase sends an update every five seconds when the latest trade price changes. The URL can be overridden with `COINBASE_WEBSOCKET_URL`, for example to use the Coinbase sandbox feed.
+The backend connects to Coinbase Exchange at `wss://ws-feed.exchange.coinbase.com` and subscribes to the unauthenticated channel selected by `COINBASE_TICKER_CHANNEL` for `BTC-USD`. It defaults to `ticker_batch`; accepted values are `ticker_batch` and `ticker`. The URL can be overridden with `COINBASE_WEBSOCKET_URL`, for example to use the Coinbase sandbox feed.
 
 Then open:
 
 - Frontend: `http://localhost:3000`
 - Backend: `http://localhost:3001/api/hello`
 - Postgres: `localhost:5432`
+
+To run the short-duration local game with Coinbase's higher-frequency `ticker` channel:
+
+```bash
+make fullstack-up-realtime
+```
 
 ## Simulate a Price Update
 

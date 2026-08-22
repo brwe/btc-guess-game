@@ -1,6 +1,7 @@
 import postgres from "postgres";
 import { createApi } from "./api";
 import { CoinbaseTickerClient } from "./coinbaseTickerClient";
+import type { CoinbaseTickerChannel } from "./coinbaseTickerClient";
 import { PostgresGuessRepository } from "./guessRepository";
 import { InMemoryLatestPriceStore } from "./latestPriceStore";
 import { PriceMessageProcessor } from "./priceMessageProcessor";
@@ -12,6 +13,9 @@ const databaseUrl = process.env.DATABASE_URL;
 const guessDurationSeconds = Number(process.env.GUESS_DURATION_SECONDS ?? 60);
 const coinbaseWebSocketUrl = process.env.COINBASE_WEBSOCKET_URL
   ?? "wss://ws-feed.exchange.coinbase.com";
+const coinbaseTickerChannel = parseCoinbaseTickerChannel(
+  process.env.COINBASE_TICKER_CHANNEL ?? "ticker_batch",
+);
 const resetDatabaseOnStart = process.env.RESET_DATABASE_ON_START === "true";
 
 if (!Number.isInteger(guessDurationSeconds) || guessDurationSeconds <= 0) {
@@ -38,6 +42,7 @@ const priceMessageProcessor = new PriceMessageProcessor(
 );
 const coinbaseTickerClient = new CoinbaseTickerClient(priceMessageProcessor, {
   url: coinbaseWebSocketUrl,
+  channel: coinbaseTickerChannel,
 });
 
 await guessRepository.initialize({ reset: resetDatabaseOnStart });
@@ -79,4 +84,9 @@ function requiredEnvironmentVariable(name: string) {
   const value = process.env[name];
   if (!value) throw new Error(`${name} is required when DATABASE_URL is not set`);
   return value;
+}
+
+function parseCoinbaseTickerChannel(value: string): CoinbaseTickerChannel {
+  if (value === "ticker" || value === "ticker_batch") return value;
+  throw new Error("COINBASE_TICKER_CHANNEL must be 'ticker' or 'ticker_batch'");
 }

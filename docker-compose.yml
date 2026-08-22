@@ -30,6 +30,7 @@ services:
       DATABASE_URL: "postgresql://epilot:epilot@postgres:5432/epilot"
       GUESS_DURATION_SECONDS: "${GUESS_DURATION_SECONDS:-60}"
       COINBASE_WEBSOCKET_URL: "${COINBASE_WEBSOCKET_URL:-wss://ws-feed.exchange.coinbase.com}"
+      COINBASE_TICKER_CHANNEL: "${COINBASE_TICKER_CHANNEL:-ticker_batch}"
       RESET_DATABASE_ON_START: "false"
     depends_on:
       postgres:

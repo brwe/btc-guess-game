@@ -6,9 +6,12 @@ type PriceMessageHandler = {
 
 type Logger = Pick<Console, "info" | "warn" | "error">;
 
+export type CoinbaseTickerChannel = "ticker" | "ticker_batch";
+
 type CoinbaseTickerClientOptions = {
   url?: string;
   productId?: string;
+  channel?: CoinbaseTickerChannel;
   reconnectDelayMs?: number;
   startupTimeoutMs?: number;
   createWebSocket?: (url: string) => WebSocket;
@@ -31,6 +34,7 @@ type StartupState = {
 export class CoinbaseTickerClient {
   private readonly url: string;
   private readonly productId: string;
+  private readonly channel: CoinbaseTickerChannel;
   private readonly reconnectDelayMs: number;
   private readonly startupTimeoutMs: number;
   private readonly createWebSocket: (url: string) => WebSocket;
@@ -49,6 +53,7 @@ export class CoinbaseTickerClient {
   ) {
     this.url = options.url ?? "wss://ws-feed.exchange.coinbase.com";
     this.productId = options.productId ?? "BTC-USD";
+    this.channel = options.channel ?? "ticker_batch";
     this.reconnectDelayMs = options.reconnectDelayMs ?? 1_000;
     this.startupTimeoutMs = options.startupTimeoutMs ?? 10_000;
     this.createWebSocket = options.createWebSocket ?? ((url) => new WebSocket(url));
@@ -108,9 +113,9 @@ export class CoinbaseTickerClient {
         socket.send(JSON.stringify({
           type: "subscribe",
           product_ids: [this.productId],
-          channels: ["ticker_batch"],
+          channels: [this.channel],
         }));
-        this.logger.info(`[coinbase] requested ticker_batch ${this.productId} subscription`);
+        this.logger.info(`[coinbase] requested ${this.channel} ${this.productId} subscription`);
       } catch (error) {
         this.logger.error("[coinbase] subscription request failed", error);
         if (!this.failStartup(toError(error, "Coinbase subscription request failed"))) {
@@ -122,9 +127,9 @@ export class CoinbaseTickerClient {
     });
 
     socket.addEventListener("message", (event) => {
-      const controlMessage = parseControlMessage(event.data, this.productId);
+      const controlMessage = parseControlMessage(event.data, this.productId, this.channel);
       if (controlMessage === "subscribed") {
-        this.logger.info(`[coinbase] subscribed to ticker_batch ${this.productId}`);
+        this.logger.info(`[coinbase] subscribed to ${this.channel} ${this.productId}`);
         this.completeStartup();
         return;
       }
@@ -211,7 +216,11 @@ export class CoinbaseTickerClient {
   }
 }
 
-function parseControlMessage(data: unknown, productId: string): "subscribed" | Error | null {
+function parseControlMessage(
+  data: unknown,
+  productId: string,
+  channel: CoinbaseTickerChannel,
+): "subscribed" | Error | null {
   if (typeof data !== "string") return null;
 
   let message: unknown;
@@ -228,10 +237,11 @@ function parseControlMessage(data: unknown, productId: string): "subscribed" | E
   }
   if (message.type !== "subscriptions" || !Array.isArray(message.channels)) return null;
 
-  const subscribed = message.channels.some((channel) => isRecord(channel)
-    && (channel.name === "ticker_batch" || channel.name === "ticker_1000")
-    && Array.isArray(channel.product_ids)
-    && channel.product_ids.includes(productId));
+  const subscribed = message.channels.some((subscription) => isRecord(subscription)
+    && (subscription.name === channel
+      || (channel === "ticker_batch" && subscription.name === "ticker_1000"))
+    && Array.isArray(subscription.product_ids)
+    && subscription.product_ids.includes(productId));
   return subscribed ? "subscribed" : null;
 }
 

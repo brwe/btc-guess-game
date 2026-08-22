@@ -1,4 +1,4 @@
-.PHONY: backend-test
+.PHONY: backend-test fullstack-up fullstack-up-realtime
 
 backend-test:
 	cd backend && bun install --frozen-lockfile && bun test
@@ -6,3 +6,6 @@ backend-test:
 
 fullstack-up:
 	GUESS_DURATION_SECONDS=5 docker compose up --build 
+
+fullstack-up-realtime:
+	COINBASE_TICKER_CHANNEL=ticker GUESS_DURATION_SECONDS=5 docker compose up --build

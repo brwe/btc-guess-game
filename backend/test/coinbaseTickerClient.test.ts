@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { CoinbaseTickerClient } from "../src/coinbaseTickerClient";
+import type { CoinbaseTickerChannel } from "../src/coinbaseTickerClient";
 import type { PriceMessage } from "../src/priceMessageProcessor";
 
 class FakeWebSocket {
@@ -26,7 +27,7 @@ class FakeWebSocket {
   }
 }
 
-function createContext() {
+function createContext(channel?: CoinbaseTickerChannel) {
   const messages: PriceMessage[] = [];
   const socket = new FakeWebSocket();
   const client = new CoinbaseTickerClient({
@@ -36,6 +37,7 @@ function createContext() {
     },
   }, {
     createWebSocket: () => socket as unknown as WebSocket,
+    channel,
     logger: { info() {}, warn() {}, error() {} },
   });
 
@@ -65,6 +67,25 @@ describe("CoinbaseTickerClient", () => {
     socket.emit("message", JSON.stringify({
       type: "subscriptions",
       channels: [{ name: "ticker_1000", product_ids: ["BTC-USD"] }],
+    }));
+    await started;
+    client.stop();
+  });
+
+  test("can subscribe to the real-time ticker channel", async () => {
+    const { client, socket } = createContext("ticker");
+
+    const started = client.start();
+    socket.emit("open");
+
+    expect(socket.sent).toEqual([JSON.stringify({
+      type: "subscribe",
+      product_ids: ["BTC-USD"],
+      channels: ["ticker"],
+    })]);
+    socket.emit("message", JSON.stringify({
+      type: "subscriptions",
+      channels: [{ name: "ticker", product_ids: ["BTC-USD"] }],
     }));
     await started;
     client.stop();
