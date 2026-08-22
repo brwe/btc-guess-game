@@ -79,7 +79,7 @@ async function getLatestGuess() {
   return guesses[0] ?? null;
 }
 
-function App() {
+export function App() {
   const [latestPrice, setLatestPrice] = useState<PriceResponse | null>(null);
   const [activeGuess, setActiveGuess] = useState<ActiveGuess | null>(null);
   const [lastResolvedGuess, setLastResolvedGuess] = useState<ResolvedGuess | null>(null);
@@ -276,8 +276,11 @@ function App() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-);
+const rootElement = document.getElementById("root");
+if (rootElement) {
+  ReactDOM.createRoot(rootElement).render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>,
+  );
+}
