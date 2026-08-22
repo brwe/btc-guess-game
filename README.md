@@ -18,7 +18,7 @@ This app lets players guess whether the BTC price will be higher or lower after 
 
 - Pending guesses use PostgreSQL as the source of truth instead of being duplicated in an in-memory map. When a price update arrives, the resolution design queries indexed pending guesses whose `resolve_after` timestamp has passed and whose entry price differs from the new price. This avoids synchronizing an in-memory copy with the database during one backend run.
 
-- Price updates are passed to a source-agnostic processor as `{ price, observedAt }`. Tests, simulations, and the Coinbase WebSocket adapter call the same method. `observedAt` is the exchange event timestamp used to decide whether `resolve_after` has passed.
+- Price updates are passed to a source-agnostic processor as `{ price, observedAt }`. Tests and the Coinbase WebSocket adapter call the same method. `observedAt` is the exchange event timestamp used to decide whether `resolve_after` has passed.
 
 - Resolved guesses store `resolved_at` and `resolved_price`. The result and score change are derived from `direction`, `entry_price`, and `resolved_price` instead of being persisted as duplicate data.
 
@@ -71,6 +71,104 @@ The browser opens `GET /api/players/:playerId/events` as an SSE stream. `price-u
 The backend derives wins and losses from resolved guesses and returns the current score as `wins - losses`. It also determines whether each resolved guess was won or lost. This keeps all game calculations authoritative even if an event is delivered more than once or the application is open in multiple browser tabs.
 
 The frontend reads the latest price from `GET /api/price`. Price updates enter the backend only through its Coinbase WebSocket connection; there is no public endpoint for injecting prices.
+
+## Architecture
+
+The application uses three communication mechanisms, each for a distinct purpose:
+
+```text
+Coinbase
+   │
+   │ WebSocket: continuous BTC/USD ticker
+   ▼
+Backend on ECS ───────────────► PostgreSQL
+   │                              authoritative guesses,
+   │                              results, and scores
+   │
+   │ SSE: price and resolution notifications
+   ▼
+Browser frontend
+   │
+   │ REST: commands and authoritative snapshots
+   └──────────────────────────► Backend
+```
+
+### Coinbase WebSocket
+
+The backend, not the browser, maintains a WebSocket connection to Coinbase and subscribes to BTC/USD ticker messages. Every price used by the game therefore passes through the backend. For each valid message, the backend resolves eligible guesses transactionally in PostgreSQL, updates its in-memory latest-price snapshot, publishes a `price-updated` event, and publishes a player-specific `guess-resolved` event when applicable.
+
+### REST API
+
+The browser uses HTTP requests for commands and authoritative snapshots:
+
+```text
+GET  /api/price
+POST /api/guesses
+GET  /api/players/:playerId/guesses?limit=1
+GET  /api/players/:playerId/score
+GET  /api/players/:playerId/events
+```
+
+When submitting a guess, the browser sends only the anonymous player id and the `up` or `down` direction. The backend chooses the entry price, creation time, and resolution time. It also determines the result and calculates the score. The frontend displays those values but does not calculate or persist authoritative game state.
+
+### Server-Sent Events
+
+The browser opens `GET /api/players/:playerId/events` as a long-running SSE connection. A `price-updated` event updates the displayed ticker without polling. A player-scoped `guess-resolved` event tells the browser to reload the latest guess and score through REST.
+
+SSE events are disposable notifications rather than the source of truth. On initial page load and whenever SSE reconnects, the browser reloads the latest price, guess, and score. Consequently, a missed event does not lose a result, a duplicate event cannot count a result twice, and refreshing the page or opening another tab does not corrupt the score.
+
+### Guess lifecycle
+
+```text
+Browser                     Backend                    PostgreSQL
+   │                           │                           │
+   │ POST /api/guesses         │                           │
+   ├──────────────────────────►│                           │
+   │                           │ INSERT pending guess      │
+   │                           ├──────────────────────────►│
+   │ 201 + entryPrice          │                           │
+   │     + resolveAfter        │                           │
+   │◄──────────────────────────┤                           │
+   │                           │                           │
+Coinbase price ───────────────►│ resolve eligible guess    │
+   │                           ├──────────────────────────►│
+   │ price-updated SSE         │◄──────────────────────────┤
+   │◄──────────────────────────┤                           │
+   │ guess-resolved SSE        │                           │
+   │◄──────────────────────────┤                           │
+   │ GET latest guess + score  │                           │
+   ├──────────────────────────►│ query authoritative state │
+   │◄──────────────────────────┴───────────────────────────┤
+```
+
+Prices received before `resolve_after` may update the displayed ticker but cannot settle the guess. The first eligible price after `resolve_after` whose value differs from the entry price resolves it.
+
+PostgreSQL enforces at most one pending guess per player with a partial unique index on `player_id` where the status is `pending`. If concurrent requests try to create two guesses for one player, the database accepts one and the backend returns `409 Conflict` for the other.
+
+### AWS request path
+
+```text
+Browser
+   │
+   ▼
+CloudFront
+   ├── static files ──► private S3 bucket
+   │
+   └── /api/* ───────► CloudFront VPC origin
+                              │
+                              ▼
+                         internal ALB
+                              │
+                              ▼
+                         ECS backend
+                              │
+                              ▼
+                         private RDS
+```
+
+CloudFront is the only public entry point. The frontend is served from a private S3 bucket through Origin Access Control. API requests pass through a CloudFront VPC origin to an internal load balancer and then to ECS. The ECS task remains in a public subnet only for outbound Coinbase access without a NAT gateway; inbound application traffic is allowed only from the load balancer.
+
+The current latest-price snapshot and SSE subscriber registry live in backend memory, which matches the single-task deployment. A multi-instance deployment would need shared Pub/Sub, such as PostgreSQL `LISTEN/NOTIFY`, Redis, or a message broker, so an event processed by one instance can reach browsers connected to another. PostgreSQL would remain authoritative.
 
 ## Realtime Updates and SSE Decision
 
