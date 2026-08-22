@@ -4,6 +4,7 @@ import { CoinbaseTickerClient } from "./coinbaseTickerClient";
 import { PostgresGuessRepository } from "./guessRepository";
 import { InMemoryLatestPriceStore } from "./latestPriceStore";
 import { PriceMessageProcessor } from "./priceMessageProcessor";
+import { InMemoryRealtimeEvents } from "./realtimeEvents";
 
 const port = Number(process.env.PORT ?? 3001);
 const host = process.env.HOST ?? "0.0.0.0";
@@ -29,7 +30,12 @@ const sql = databaseUrl
   });
 const guessRepository = new PostgresGuessRepository(sql);
 const latestPriceStore = new InMemoryLatestPriceStore();
-const priceMessageProcessor = new PriceMessageProcessor(guessRepository, latestPriceStore);
+const realtimeEvents = new InMemoryRealtimeEvents();
+const priceMessageProcessor = new PriceMessageProcessor(
+  guessRepository,
+  latestPriceStore,
+  realtimeEvents,
+);
 const coinbaseTickerClient = new CoinbaseTickerClient(priceMessageProcessor, {
   url: coinbaseWebSocketUrl,
 });
@@ -47,6 +53,7 @@ const app = createApi({
   guessRepository,
   playerGuessReader: guessRepository,
   playerScoreReader: guessRepository,
+  realtimeEventSubscriber: realtimeEvents,
   latestPriceStore,
   priceMessageProcessor,
   guessDurationSeconds,

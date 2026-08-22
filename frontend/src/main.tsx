@@ -90,6 +90,8 @@ function App() {
 
   useEffect(() => {
     let active = true;
+    const playerId = encodeURIComponent(getPlayerId());
+    const events = new EventSource(`/api/players/${playerId}/events`);
 
     async function loadPrice() {
       try {
@@ -104,17 +106,6 @@ function App() {
         }
       }
     }
-
-    void loadPrice();
-    const interval = window.setInterval(loadPrice, 5_000);
-    return () => {
-      active = false;
-      window.clearInterval(interval);
-    };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
 
     async function loadPlayerData() {
       try {
@@ -142,7 +133,11 @@ function App() {
             resolvedPrice: guess.resolvedPrice,
             result: guess.result,
           });
+        } else {
+          setActiveGuess(null);
+          setLastResolvedGuess(null);
         }
+        setError(null);
       } catch (requestError) {
         if (active) {
           setError(requestError instanceof Error ? requestError.message : String(requestError));
@@ -150,9 +145,34 @@ function App() {
       }
     }
 
-    void loadPlayerData();
+    function handlePriceUpdated(event: Event) {
+      try {
+        const price = JSON.parse((event as MessageEvent<string>).data) as PriceResponse;
+        if (active) {
+          setLatestPrice(price);
+          setError(null);
+        }
+      } catch {
+        if (active) setError("received an invalid price update");
+      }
+    }
+
+    function reloadSnapshots() {
+      void loadPrice();
+      void loadPlayerData();
+    }
+
+    events.addEventListener("connected", reloadSnapshots);
+    events.addEventListener("price-updated", handlePriceUpdated);
+    events.addEventListener("guess-resolved", () => void loadPlayerData());
+    events.onerror = () => {
+      if (active) setError("live updates disconnected; reconnecting...");
+    };
+
+    reloadSnapshots();
     return () => {
       active = false;
+      events.close();
     };
   }, []);
 
@@ -173,76 +193,6 @@ function App() {
     updateCountdown();
     const interval = window.setInterval(updateCountdown, 1_000);
     return () => window.clearInterval(interval);
-  }, [activeGuess]);
-
-  useEffect(() => {
-    if (!activeGuess) return;
-
-    let active = true;
-    let interval: number | undefined;
-    let checking = false;
-    let completed = false;
-    const delay = Math.max(0, Date.parse(activeGuess.resolveAfter) - Date.now());
-
-    async function checkGuess() {
-      if (!active || checking || completed) return;
-      checking = true;
-
-      try {
-        const guess = await getLatestGuess();
-        if (!active) return;
-        if (!guess) {
-          const backendScore = await getPlayerScore();
-          if (!active) return;
-          completed = true;
-          if (interval !== undefined) window.clearInterval(interval);
-          setScore(backendScore);
-          setActiveGuess(null);
-          setLastResolvedGuess(null);
-          return;
-        }
-        if (guess.status === "pending"
-          || guess.resolvedPrice === null
-          || guess.result === null) return;
-
-        const backendScore = await getPlayerScore();
-        if (!active) return;
-        completed = true;
-        if (interval !== undefined) window.clearInterval(interval);
-
-        const resolvedGuess = {
-          guessId: guess.guessId,
-          direction: guess.direction,
-          entryPrice: guess.entryPrice,
-          resolvedPrice: guess.resolvedPrice,
-          result: guess.result,
-        };
-        setScore(backendScore);
-        setLastResolvedGuess(resolvedGuess);
-        setActiveGuess(null);
-        setLatestPrice((current) => current
-          ? { ...current, price: guess.resolvedPrice as number }
-          : current);
-        setError(null);
-      } catch (requestError) {
-        if (active) {
-          setError(requestError instanceof Error ? requestError.message : String(requestError));
-        }
-      } finally {
-        checking = false;
-      }
-    }
-
-    const timeout = window.setTimeout(() => {
-      void checkGuess();
-      interval = window.setInterval(checkGuess, 2_000);
-    }, delay);
-
-    return () => {
-      active = false;
-      window.clearTimeout(timeout);
-      if (interval !== undefined) window.clearInterval(interval);
-    };
   }, [activeGuess]);
 
   async function registerGuess(direction: Direction) {
@@ -336,7 +286,7 @@ function App() {
         {activeGuess && secondsRemaining > 0
           ? `${secondsRemaining} second${secondsRemaining === 1 ? "" : "s"} remaining`
           : activeGuess
-            ? "Waiting for the next price change..."
+            ? "Awaiting settlement..."
             : null}
       </p>
       {error ? <p className="error">{error}</p> : null}

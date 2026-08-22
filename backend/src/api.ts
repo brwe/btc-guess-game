@@ -1,17 +1,20 @@
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { streamSSE } from "hono/streaming";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { PendingGuessConflictError } from "./guessRepository";
 import type { GuessRepository, GuessRow, PlayerGuessReader, PlayerScore, PlayerScoreReader } from "./guessRepository";
 import type { LatestPriceReader } from "./latestPriceStore";
 import type { PriceMessageProcessor } from "./priceMessageProcessor";
+import type { RealtimeEvent, RealtimeEventSubscriber } from "./realtimeEvents";
 
 type ApiDependencies = {
   guessRepository: GuessRepository;
   playerGuessReader: PlayerGuessReader;
   playerScoreReader: PlayerScoreReader;
+  realtimeEventSubscriber: RealtimeEventSubscriber;
   latestPriceStore: LatestPriceReader;
   priceMessageProcessor: PriceMessageProcessor;
   guessDurationSeconds: number;
@@ -28,6 +31,7 @@ export function createApi({
   guessRepository,
   playerGuessReader,
   playerScoreReader,
+  realtimeEventSubscriber,
   latestPriceStore,
   priceMessageProcessor,
   guessDurationSeconds,
@@ -161,6 +165,48 @@ export function createApi({
 
     const score = await playerScoreReader.getPlayerScore(playerId);
     return context.json(serializeScore(score));
+  });
+
+  app.get("/api/players/:playerId/events", (context) => {
+    const playerId = context.req.param("playerId").trim();
+    if (!playerId) {
+      return context.json({ error: "playerId must be a non-empty string" }, 400);
+    }
+
+    return streamSSE(context, async (stream) => {
+      let resolveDone = () => {};
+      const done = new Promise<void>((resolve) => {
+        resolveDone = resolve;
+      });
+      let cleanedUp = false;
+      let unsubscribe = () => {};
+      let writeQueue = Promise.resolve();
+      let heartbeat: ReturnType<typeof setInterval> | undefined;
+
+      const cleanup = () => {
+        if (cleanedUp) return;
+        cleanedUp = true;
+        if (heartbeat) clearInterval(heartbeat);
+        unsubscribe();
+        resolveDone();
+      };
+      const enqueue = (event: RealtimeEvent | { type: "connected" | "heartbeat"; data: object }) => {
+        writeQueue = writeQueue
+          .then(() => stream.writeSSE({
+            event: event.type,
+            data: JSON.stringify(event.data),
+            retry: event.type === "connected" ? 2_000 : undefined,
+          }))
+          .catch(cleanup);
+      };
+
+      unsubscribe = realtimeEventSubscriber.subscribe(playerId, enqueue);
+      stream.onAbort(cleanup);
+      enqueue({ type: "connected", data: {} });
+      heartbeat = setInterval(() => enqueue({ type: "heartbeat", data: {} }), 15_000);
+
+      await done;
+    });
   });
 
   app.notFound((context) => context.text("Not found", 404));

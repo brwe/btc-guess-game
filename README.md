@@ -26,7 +26,7 @@ This app lets players guess whether the BTC price will be higher or lower after 
 
 - This database-query approach has a scalability limitation: if every backend instance consumes the same price stream, every instance can query the same eligible guesses and attempt to resolve them. Conditional updates inside a transaction can preserve correctness, but the duplicated queries still waste database capacity. If horizontal scaling becomes necessary, price processing should move to one elected resolver or a dedicated worker; alternatively, workers can claim disjoint batches with PostgreSQL row locking such as `FOR UPDATE SKIP LOCKED`.
 
-- The backend keeps one upstream WebSocket connection to Coinbase, and the frontend can poll backend state instead of holding its own live socket unless we later add live push.
+- The backend keeps one upstream WebSocket connection to Coinbase and exposes one player-scoped Server-Sent Events stream to each frontend. The stream carries live price updates and guess-resolution notifications.
 
 - Anonymous players are identified by a generated player id stored in browser local storage, and that id is used to load the same score and guess history when the browser returns.
 
@@ -46,7 +46,7 @@ From `/Users/a2tirb/robofarm/epilot-challenge`, run:
 docker compose up --build
 ```
 
-The guess duration is configured with `GUESS_DURATION_SECONDS` on the backend and defaults to `60`. For faster local testing, start the stack with `GUESS_DURATION_SECONDS=5 docker compose up --build`. The backend returns the resulting `resolveAfter` timestamp, which drives the frontend countdown and polling delay.
+The guess duration is configured with `GUESS_DURATION_SECONDS` on the backend and defaults to `60`. For faster local testing, start the stack with `GUESS_DURATION_SECONDS=5 docker compose up --build`. The backend returns the resulting `resolveAfter` timestamp, which drives the frontend countdown.
 
 The backend connects to Coinbase Exchange at `wss://ws-feed.exchange.coinbase.com` and subscribes to the unauthenticated `ticker_batch` channel for `BTC-USD`. Coinbase sends an update every five seconds when the latest trade price changes. The URL can be overridden with `COINBASE_WEBSOCKET_URL`, for example to use the Coinbase sandbox feed.
 
@@ -70,27 +70,27 @@ If the timestamp is omitted, the simulator uses the current time. The command pr
 
 The React frontend displays the latest BTC/USD price, score, wins, and losses. A player can submit one `up` or `down` guess at a time. Both buttons are disabled while the guess is pending.
 
-The browser waits until the backend-provided `resolveAfter` timestamp, then polls `GET /api/players/:playerId/guesses?limit=1` every two seconds until the backend resolves the guess. Guesses are ordered by `resolve_after DESC`, with `created_at DESC` and `id DESC` as deterministic tie-breakers. Only the anonymous player id is stored in browser storage; guesses and score are reloaded from the backend and are not stored or incremented by the browser.
+The browser opens `GET /api/players/:playerId/events` as an SSE stream. `price-updated` events replace price polling, while player-scoped `guess-resolved` events tell the frontend to reload the latest guess and score. Guesses are ordered by `resolve_after DESC`, with `created_at DESC` and `id DESC` as deterministic tie-breakers. Only the anonymous player id is stored in browser storage; guesses and score are reloaded from the backend and are not stored or incremented by the browser.
 
-The backend derives wins and losses from resolved guesses and returns the current score as `wins - losses`. It also determines whether each resolved guess was won or lost. This keeps all game calculations authoritative even if polling requests overlap or the application is open in multiple browser tabs.
+The backend derives wins and losses from resolved guesses and returns the current score as `wins - losses`. It also determines whether each resolved guess was won or lost. This keeps all game calculations authoritative even if an event is delivered more than once or the application is open in multiple browser tabs.
 
 The frontend reads the latest price from `GET /api/price`. During local development, `bun run simulate:price -- <price> [observed-at]` sends a price message through the running backend, updates the in-memory latest price, and resolves eligible guesses.
 
-## Realtime Updates and Polling Decision
+## Realtime Updates and SSE Decision
 
 The displayed market price and a guess's settlement status are separate resources with independent timing. There are three relevant prices:
 
-- The displayed price is the latest value fetched periodically from `GET /api/price`.
+- The displayed price comes from `price-updated` SSE events, with `GET /api/price` used for initial and reconnection snapshots.
 - The entry price is the backend's price snapshot when it accepts the guess. It is immutable and returned by `POST /api/guesses`.
 - The resolution price is an eligible Coinbase price received after `resolve_after` whose value differs from the entry price.
 
-After a player submits `up` or `down`, the frontend moves through `submitting`, `pending countdown`, `awaiting settlement`, and finally `won` or `lost`. Market prices received before `resolve_after` update the displayed ticker but cannot resolve the guess. After the countdown reaches zero, the frontend polls the player's latest guess every two seconds until the backend reports it as resolved, then reloads the backend-calculated score. Because price polling and guess polling are independent, the ticker may visibly change shortly before the guess status changes. A visible price change is never used by the frontend to infer a result.
+After a player submits `up` or `down`, the frontend moves through `submitting`, `pending countdown`, `awaiting settlement`, and finally `won` or `lost`. Market prices received before `resolve_after` update the displayed ticker but cannot resolve the guess. The backend publishes price events only after it finishes processing database resolutions for that price. If a guess resolves, the subsequent player-scoped notification makes the frontend reload the authoritative guess and score. A visible price change is never used by the frontend to infer a result.
 
-Polling was chosen deliberately for this project. It is simple, survives refreshes and temporary disconnections, and restores state directly from PostgreSQL. The frontend permits only one guess-status request at a time, starts polling only when settlement becomes possible, stops after resolution, and treats every response as authoritative.
+SSE was chosen over WebSockets because updates flow only from the backend to the browser. The browser performs REST snapshot reads when it first loads and whenever the SSE connection opens or reconnects, so temporary disconnections and missed or duplicate notifications recover from PostgreSQL. A 15-second heartbeat keeps idle streams active.
 
-Server-Sent Events or WebSockets could reduce update latency, but they solve only the connection between one backend instance and one browser. In a multi-instance deployment, the instance that resolves a guess may not hold that player's browser connection. Correct cross-instance delivery would therefore also require shared Pub/Sub such as PostgreSQL `LISTEN/NOTIFY`, Redis, or a message broker. Reliable delivery may additionally require reconnection handling, heartbeats, missed-event recovery, and a transactional outbox so a committed resolution cannot lose its notification.
+The current event broadcaster is intentionally in-memory and therefore matches the current single-backend deployment. SSE solves only the connection between one backend instance and one browser. In a multi-instance deployment, the instance that resolves a guess may not hold that player's browser connection. Correct cross-instance delivery would require shared Pub/Sub such as PostgreSQL `LISTEN/NOTIFY`, Redis, or a message broker. Strong delivery guarantees may additionally require a transactional outbox so a committed resolution cannot lose its notification.
 
-If realtime delivery is introduced later, streamed events should remain disposable notifications rather than the source of truth. A `guess-resolved` event would tell the frontend to reload the latest guess and score through REST. The browser would also reload those resources whenever the stream reconnects. This hybrid snapshot-plus-notification model recovers safely from missed or duplicate events.
+Streamed guess events remain disposable notifications rather than the source of truth. A `guess-resolved` event tells the frontend to reload the latest guess and score through REST. Price events carry display data, while `GET /api/price` supplies the initial and reconnection snapshot. This hybrid snapshot-plus-notification model recovers safely from missed or duplicate events.
 
 ## Deploy to AWS
 
@@ -202,4 +202,4 @@ TODOS:
 ```
 
 
-5. ~~Frontend polling can count a result twice~~ -> solved by making the backend authoritative for outcomes and score. The frontend also permits only one resolution request at a time and assigns the returned score instead of incrementing it.
+5. ~~Frontend polling can count a result twice~~ -> solved by making the backend authoritative for outcomes and score, then replacing price and guess polling with SSE notifications plus authoritative REST snapshot reads.

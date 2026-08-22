@@ -1,14 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import type { GuessResolutionRepository, ResolvedGuess } from "../src/guessRepository";
 import { PriceMessageProcessor } from "../src/priceMessageProcessor";
+import { InMemoryRealtimeEvents } from "../src/realtimeEvents";
 import { InMemoryLatestPriceStore } from "../src/latestPriceStore";
 
 describe("PriceMessageProcessor", () => {
   test("passes a price message to the repository and reports resolved guesses", async () => {
     const calls: Array<{ price: number; observedAt: Date }> = [];
     const resolvedGuesses: ResolvedGuess[] = [
-      { id: "guess-up" },
-      { id: "guess-down" },
+      { id: "guess-up", playerId: "player-1" },
+      { id: "guess-down", playerId: "player-2" },
     ];
     const repository: GuessResolutionRepository = {
       async resolveEligible(price, observedAt) {
@@ -26,6 +27,27 @@ describe("PriceMessageProcessor", () => {
       resolvedCount: 2,
       resolvedGuessIds: ["guess-up", "guess-down"],
     });
+  });
+
+  test("publishes price and player-scoped resolution events after resolving", async () => {
+    const realtimeEvents = new InMemoryRealtimeEvents();
+    const playerOneEvents: string[] = [];
+    const playerTwoEvents: string[] = [];
+    realtimeEvents.subscribe("player-1", (event) => playerOneEvents.push(event.type));
+    realtimeEvents.subscribe("player-2", (event) => playerTwoEvents.push(event.type));
+    const processor = new PriceMessageProcessor({
+      async resolveEligible() {
+        return [{ id: "guess-up", playerId: "player-1" }];
+      },
+    }, new InMemoryLatestPriceStore(), realtimeEvents);
+
+    await processor.process({
+      price: 62_000,
+      observedAt: new Date("2026-08-21T12:01:00.000Z"),
+    });
+
+    expect(playerOneEvents).toEqual(["price-updated", "guess-resolved"]);
+    expect(playerTwoEvents).toEqual(["price-updated"]);
   });
 
   test("stores the latest valid price message", async () => {

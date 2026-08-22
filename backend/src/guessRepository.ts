@@ -26,6 +26,7 @@ export type GuessRow = {
 
 export type ResolvedGuess = {
   id: string;
+  playerId: string;
 };
 
 export type PlayerScore = {
@@ -42,6 +43,7 @@ export class PendingGuessConflictError extends Error {
 
 type ResolvedGuessRow = {
   id: string;
+  player_id: string;
 };
 
 const pendingGuessConstraint = "guesses_one_pending_per_player_idx";
@@ -184,10 +186,10 @@ export class PostgresGuessRepository implements GuessRepository, GuessResolution
       WHERE status = 'pending'
         AND resolve_after <= ${observedAt}
         AND entry_price <> ${price}
-      RETURNING id
+      RETURNING id, player_id
     `;
 
-    return rows.map((row) => ({ id: row.id }));
+    return rows.map((row) => ({ id: row.id, playerId: row.player_id }));
   }
 }
 

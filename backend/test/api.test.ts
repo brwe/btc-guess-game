@@ -4,6 +4,7 @@ import { PendingGuessConflictError } from "../src/guessRepository";
 import type { GuessRepository, GuessRow, PendingGuess } from "../src/guessRepository";
 import { InMemoryLatestPriceStore } from "../src/latestPriceStore";
 import { PriceMessageProcessor } from "../src/priceMessageProcessor";
+import { InMemoryRealtimeEvents } from "../src/realtimeEvents";
 
 const guessId = "6c3a2fc2-bcf5-4f5f-a755-21d91ff21973";
 const createdAt = new Date("2026-08-19T10:00:00.000Z");
@@ -24,6 +25,7 @@ function createRequiredApiDependencies(
         return [];
       },
     },
+    realtimeEventSubscriber: new InMemoryRealtimeEvents(),
     priceMessageProcessor: new PriceMessageProcessor({
       async resolveEligible() {
         return [];
@@ -329,7 +331,7 @@ describe("POST /api/price-messages", () => {
     const latestPriceStore = new InMemoryLatestPriceStore();
     const priceMessageProcessor = new PriceMessageProcessor({
       async resolveEligible() {
-        return [{ id: guessId }];
+        return [{ id: guessId, playerId: "player-1" }];
       },
     }, latestPriceStore);
     const app = createApi({
@@ -343,6 +345,7 @@ describe("POST /api/price-messages", () => {
       playerGuessReader: {
         async findPlayerGuesses() { return []; },
       },
+      realtimeEventSubscriber: new InMemoryRealtimeEvents(),
       latestPriceStore,
       priceMessageProcessor,
       guessDurationSeconds: 60,
@@ -468,5 +471,24 @@ describe("GET /api/players/:playerId/score", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ wins: 4, losses: 2, score: 2 });
+  });
+});
+
+describe("GET /api/players/:playerId/events", () => {
+  test("opens an event stream with a reconnect delay", async () => {
+    const { app } = createTestContext();
+    const response = await app.request("/api/players/player-1/events");
+    const reader = response.body?.getReader();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("text/event-stream");
+    expect(reader).toBeDefined();
+
+    const firstChunk = await reader!.read();
+    const text = new TextDecoder().decode(firstChunk.value);
+    expect(text).toContain("event: connected");
+    expect(text).toContain("retry: 2000");
+
+    await reader!.cancel();
   });
 });
