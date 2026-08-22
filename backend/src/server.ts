@@ -20,13 +20,13 @@ if (!Number.isInteger(guessDurationSeconds) || guessDurationSeconds <= 0) {
 const sql = databaseUrl
   ? postgres(databaseUrl, { max: 5 })
   : postgres({
-      host: requiredEnvironmentVariable("DB_HOST"),
-      port: Number(process.env.DB_PORT ?? 5432),
-      database: requiredEnvironmentVariable("DB_NAME"),
-      username: requiredEnvironmentVariable("DB_USER"),
-      password: requiredEnvironmentVariable("DB_PASSWORD"),
-      max: 5,
-    });
+    host: requiredEnvironmentVariable("DB_HOST"),
+    port: Number(process.env.DB_PORT ?? 5432),
+    database: requiredEnvironmentVariable("DB_NAME"),
+    username: requiredEnvironmentVariable("DB_USER"),
+    password: requiredEnvironmentVariable("DB_PASSWORD"),
+    max: 5,
+  });
 const guessRepository = new PostgresGuessRepository(sql);
 const latestPriceStore = new InMemoryLatestPriceStore();
 const priceMessageProcessor = new PriceMessageProcessor(guessRepository, latestPriceStore);

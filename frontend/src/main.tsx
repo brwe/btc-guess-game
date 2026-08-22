@@ -23,6 +23,15 @@ type ActiveGuess = {
   guessId: string;
   direction: Direction;
   resolveAfter: string;
+  entryPrice?: number;
+};
+
+type ResolvedGuess = {
+  guessId: string;
+  direction: Direction;
+  entryPrice: number;
+  resolvedPrice: number;
+  won: boolean;
 };
 
 type Score = {
@@ -31,8 +40,14 @@ type Score = {
 };
 
 const ACTIVE_GUESS_KEY = "btc-game-active-guess";
+const LAST_RESOLVED_GUESS_KEY = "btc-game-last-resolved-guess";
 const PLAYER_ID_KEY = "btc-game-player-id";
 const SCORE_KEY = "btc-game-score";
+
+const usdFormatter = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+});
 
 function readStoredValue<T>(key: string, fallback: T): T {
   const stored = localStorage.getItem(key);
@@ -69,6 +84,9 @@ function App() {
   const [latestPrice, setLatestPrice] = useState<PriceResponse | null>(null);
   const [activeGuess, setActiveGuess] = useState<ActiveGuess | null>(() =>
     readStoredValue<ActiveGuess | null>(ACTIVE_GUESS_KEY, null)
+  );
+  const [lastResolvedGuess, setLastResolvedGuess] = useState<ResolvedGuess | null>(() =>
+    readStoredValue<ResolvedGuess | null>(LAST_RESOLVED_GUESS_KEY, null)
   );
   const [score, setScore] = useState<Score>(() =>
     readStoredValue<Score>(SCORE_KEY, { wins: 0, losses: 0 })
@@ -136,6 +154,13 @@ function App() {
         const won = guess.direction === "up"
           ? guess.resolvedPrice > guess.entryPrice
           : guess.resolvedPrice < guess.entryPrice;
+        const resolvedGuess = {
+          guessId: guess.guessId,
+          direction: guess.direction,
+          entryPrice: guess.entryPrice,
+          resolvedPrice: guess.resolvedPrice,
+          won,
+        };
         setScore((current) => {
           const next = won
             ? { ...current, wins: current.wins + 1 }
@@ -143,7 +168,9 @@ function App() {
           localStorage.setItem(SCORE_KEY, JSON.stringify(next));
           return next;
         });
+        localStorage.setItem(LAST_RESOLVED_GUESS_KEY, JSON.stringify(resolvedGuess));
         localStorage.removeItem(ACTIVE_GUESS_KEY);
+        setLastResolvedGuess(resolvedGuess);
         setActiveGuess(null);
         setLatestPrice((current) => current
           ? { ...current, price: guess.resolvedPrice as number }
@@ -187,7 +214,12 @@ function App() {
           playerId: getPlayerId(),
         }),
       });
-      const guess = { guessId: result.guessId, direction, resolveAfter: result.resolveAfter };
+      const guess = {
+        guessId: result.guessId,
+        direction,
+        resolveAfter: result.resolveAfter,
+        entryPrice: latestPrice.price,
+      };
       localStorage.setItem(ACTIVE_GUESS_KEY, JSON.stringify(guess));
       setActiveGuess(guess);
     } catch (requestError) {
@@ -204,6 +236,43 @@ function App() {
     <main className="game">
       <p className="label">BTC / USD</p>
       <h1>{latestPrice ? `$${latestPrice.price.toLocaleString("en-US")}` : "Waiting for price"}</h1>
+
+      {activeGuess ? (
+        <section className="guess-card pending" aria-live="polite">
+          <p className="guess-card-title">Current guess</p>
+          <strong className={`direction ${activeGuess.direction}`}>
+            {activeGuess.direction === "up" ? "Up" : "Down"}
+          </strong>
+          <dl>
+            <div>
+              <dt>Guessed at</dt>
+              <dd>
+                {activeGuess.entryPrice === undefined
+                  ? "Unavailable"
+                  : usdFormatter.format(activeGuess.entryPrice)}
+              </dd>
+            </div>
+          </dl>
+        </section>
+      ) : lastResolvedGuess ? (
+        <section className={`guess-card resolved ${lastResolvedGuess.won ? "won" : "lost"}`}>
+          <p className="guess-card-title">Last result</p>
+          <strong className="result">{lastResolvedGuess.won ? "Won" : "Lost"}</strong>
+          <p className="resolved-direction">
+            Guessed {lastResolvedGuess.direction === "up" ? "up" : "down"}
+          </p>
+          <dl>
+            <div>
+              <dt>Guessed at</dt>
+              <dd>{usdFormatter.format(lastResolvedGuess.entryPrice)}</dd>
+            </div>
+            <div>
+              <dt>Resolved at</dt>
+              <dd>{usdFormatter.format(lastResolvedGuess.resolvedPrice)}</dd>
+            </div>
+          </dl>
+        </section>
+      ) : null}
 
       <div className="score" aria-label="Score">
         <strong>{totalScore}</strong>
@@ -225,7 +294,7 @@ function App() {
           ? `${secondsRemaining} second${secondsRemaining === 1 ? "" : "s"} remaining`
           : activeGuess
             ? "Waiting for the next price change..."
-            : "Will Bitcoin move up or down?"}
+            : null}
       </p>
       {error ? <p className="error">{error}</p> : null}
     </main>

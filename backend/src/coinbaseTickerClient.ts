@@ -229,7 +229,7 @@ function parseControlMessage(data: unknown, productId: string): "subscribed" | E
   if (message.type !== "subscriptions" || !Array.isArray(message.channels)) return null;
 
   const subscribed = message.channels.some((channel) => isRecord(channel)
-    && channel.name === "ticker_batch"
+    && (channel.name === "ticker_batch" || channel.name === "ticker_1000")
     && Array.isArray(channel.product_ids)
     && channel.product_ids.includes(productId));
   return subscribed ? "subscribed" : null;

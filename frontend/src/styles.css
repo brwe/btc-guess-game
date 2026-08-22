@@ -50,6 +50,87 @@ h1 {
   line-height: 1;
 }
 
+.guess-card {
+  margin: 0 0 30px;
+  padding: 20px;
+  border: 2px solid #172018;
+  background: #f4f1e8;
+  text-align: left;
+}
+
+.guess-card.pending {
+  box-shadow: 5px 5px 0 #172018;
+}
+
+.guess-card.resolved.won {
+  box-shadow: 5px 5px 0 #28734b;
+}
+
+.guess-card.resolved.lost {
+  box-shadow: 5px 5px 0 #bb3e35;
+}
+
+.guess-card-title,
+.resolved-direction {
+  margin: 0;
+  font-family: "Courier New", monospace;
+}
+
+.guess-card-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.guess-card .direction,
+.guess-card .result {
+  display: block;
+  margin: 6px 0 16px;
+  font-size: 1.7rem;
+}
+
+.guess-card.resolved.won .result {
+  color: #28734b;
+}
+
+.guess-card.resolved.lost .result {
+  color: #bb3e35;
+}
+
+.resolved-direction {
+  margin: -10px 0 16px;
+  font-size: 0.8rem;
+}
+
+.guess-card dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 0;
+}
+
+.guess-card.pending dl {
+  grid-template-columns: 1fr;
+}
+
+.guess-card dl div {
+  padding-top: 10px;
+  border-top: 1px solid #9a9b91;
+}
+
+.guess-card dt {
+  margin-bottom: 4px;
+  font-family: "Courier New", monospace;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+}
+
+.guess-card dd {
+  margin: 0;
+  font-weight: 700;
+}
+
 .score {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -85,11 +166,11 @@ h1 {
   box-shadow: 4px 4px 0 #172018;
 }
 
-.up {
+.actions .up {
   background: #28734b;
 }
 
-.down {
+.actions .down {
   background: #bb3e35;
 }
 
@@ -106,6 +187,10 @@ h1 {
   font-family: "Courier New", monospace;
   font-size: 0.86rem;
   line-height: 1.5;
+}
+
+.status:empty {
+  display: none;
 }
 
 .error {

@@ -46,12 +46,12 @@ function confirmSubscription(socket: FakeWebSocket) {
   socket.emit("open");
   socket.emit("message", JSON.stringify({
     type: "subscriptions",
-    channels: [{ name: "ticker_batch", product_ids: ["BTC-USD"] }],
+    channels: [{ name: "ticker_1000", product_ids: ["BTC-USD"] }],
   }));
 }
 
 describe("CoinbaseTickerClient", () => {
-  test("subscribes to BTC-USD ticker_batch when the socket opens", async () => {
+  test("subscribes to ticker_batch and accepts Coinbase's ticker_1000 acknowledgement", async () => {
     const { client, socket } = createContext();
 
     const started = client.start();
@@ -64,7 +64,7 @@ describe("CoinbaseTickerClient", () => {
     })]);
     socket.emit("message", JSON.stringify({
       type: "subscriptions",
-      channels: [{ name: "ticker_batch", product_ids: ["BTC-USD"] }],
+      channels: [{ name: "ticker_1000", product_ids: ["BTC-USD"] }],
     }));
     await started;
     client.stop();
