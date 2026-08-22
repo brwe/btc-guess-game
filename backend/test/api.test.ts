@@ -389,7 +389,7 @@ describe("GET /api/players/:playerId/score", () => {
 });
 
 describe("GET /api/players/:playerId/events", () => {
-  test("opens an event stream with a reconnect delay", async () => {
+  test("opens an event stream with a reconnect delay and the latest price", async () => {
     const { app } = createTestContext();
     const response = await app.request("/api/players/player-1/events");
     const reader = response.body?.getReader();
@@ -398,10 +398,17 @@ describe("GET /api/players/:playerId/events", () => {
     expect(response.headers.get("content-type")).toBe("text/event-stream");
     expect(reader).toBeDefined();
 
+    const decoder = new TextDecoder();
     const firstChunk = await reader!.read();
-    const text = new TextDecoder().decode(firstChunk.value);
+    let text = decoder.decode(firstChunk.value);
+    if (!text.includes("event: price-updated")) {
+      const secondChunk = await reader!.read();
+      text += decoder.decode(secondChunk.value);
+    }
     expect(text).toContain("event: connected");
     expect(text).toContain("retry: 2000");
+    expect(text).toContain("event: price-updated");
+    expect(text).toContain(`\"price\":${latestPrice}`);
 
     await reader!.cancel();
   });
