@@ -63,6 +63,49 @@ describe("POST /api/guesses", () => {
     }]);
   });
 
+  test("allows only one concurrent pending guess per player", async () => {
+    const inserted: PendingGuess[] = [];
+    const guessIds = [
+      "6c3a2fc2-bcf5-4f5f-a755-21d91ff21973",
+      "208d7707-9385-4f6e-8d41-c01272468d58",
+    ];
+    let nextGuessId = 0;
+    const app = createApi({
+      guessRepository: {
+        async insert(guess) {
+          inserted.push(guess);
+        },
+        async findById() {
+          return null;
+        },
+      },
+      createId: () => guessIds[nextGuessId++]!,
+      now: () => createdAt,
+    });
+    const registerGuess = (direction: "up" | "down") => app.request("/api/guesses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        direction,
+        entryPrice: 59_321.25,
+        playerId: "player-1",
+      }),
+    });
+
+    const responses = await Promise.all([
+      registerGuess("up"),
+      registerGuess("down"),
+    ]);
+
+    expect(responses.map((response) => response.status).sort()).toEqual([201, 409]);
+    const conflictResponse = responses.find((response) => response.status === 409);
+    expect(await conflictResponse?.json()).toEqual({
+      error: "player already has a pending guess",
+    });
+    expect(inserted).toHaveLength(1);
+    expect(inserted[0]?.playerId).toBe("player-1");
+  });
+
   test("generates a UUID when no id factory is provided", async () => {
     const inserted: PendingGuess[] = [];
     const app = createApi({

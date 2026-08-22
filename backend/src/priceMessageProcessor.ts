@@ -14,7 +14,7 @@ export type PriceProcessingResult = {
 export class PriceMessageProcessor {
   constructor(
     private readonly guessRepository: GuessResolutionRepository,
-    private readonly latestPriceStore: LatestPriceWriter,
+    private readonly latestPriceStore?: LatestPriceWriter,
   ) { }
 
   async process(message: PriceMessage): Promise<PriceProcessingResult> {
@@ -26,7 +26,7 @@ export class PriceMessageProcessor {
       throw new Error("observedAt must be a valid Date");
     }
 
-    this.latestPriceStore.set(message);
+    this.latestPriceStore?.set(message);
 
     const resolvedGuesses = await this.guessRepository.resolveEligible(
       message.price,
