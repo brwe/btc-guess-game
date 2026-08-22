@@ -7,9 +7,10 @@ import { PriceMessageProcessor } from "../src/priceMessageProcessor";
 
 const guessId = "6c3a2fc2-bcf5-4f5f-a755-21d91ff21973";
 const createdAt = new Date("2026-08-19T10:00:00.000Z");
+const latestPrice = 59_321.25;
 
 function createRequiredApiDependencies(
-  latestPriceStore = new InMemoryLatestPriceStore(),
+  latestPriceStore = createLatestPriceStore(),
 ) {
   return {
     latestPriceStore,
@@ -20,6 +21,12 @@ function createRequiredApiDependencies(
     }, latestPriceStore),
     guessDurationSeconds: 60,
   };
+}
+
+function createLatestPriceStore() {
+  const store = new InMemoryLatestPriceStore();
+  store.set({ price: latestPrice, observedAt: createdAt });
+  return store;
 }
 
 function createTestContext(existingRows: GuessRow[] = []) {
@@ -60,20 +67,21 @@ describe("POST /api/guesses", () => {
     const response = await app.request("/api/guesses", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ direction: "up", entryPrice: 59_321.25, playerId: "player-1" }),
+      body: JSON.stringify({ direction: "up", playerId: "player-1" }),
     });
 
     expect(response.status).toBe(201);
     expect(await response.json()).toEqual({
       guessId,
       status: "pending",
+      entryPrice: latestPrice,
       resolveAfter: "2026-08-19T10:01:00.000Z",
     });
     expect(inserted).toEqual([{
       id: guessId,
       playerId: "player-1",
       direction: "up",
-      entryPrice: 59_321.25,
+      entryPrice: latestPrice,
       createdAt,
       resolveAfter: new Date("2026-08-19T10:01:00.000Z"),
     }]);
@@ -108,7 +116,6 @@ describe("POST /api/guesses", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         direction,
-        entryPrice: 59_321.25,
         playerId: "player-1",
       }),
     });
@@ -145,7 +152,7 @@ describe("POST /api/guesses", () => {
     const response = await app.request("/api/guesses", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ direction: "up", entryPrice: 59_321.25, playerId: "player-1" }),
+      body: JSON.stringify({ direction: "up", playerId: "player-1" }),
     });
     const body = await response.json() as { guessId: string };
 
@@ -174,24 +181,41 @@ describe("POST /api/guesses", () => {
     const response = await app.request("/api/guesses", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ direction: "up", entryPrice: 59_321.25, playerId: "player-1" }),
+      body: JSON.stringify({ direction: "up", playerId: "player-1" }),
     });
 
     expect(response.status).toBe(201);
     expect(await response.json()).toEqual({
       guessId,
       status: "pending",
+      entryPrice: latestPrice,
       resolveAfter: "2026-08-19T10:00:05.000Z",
     });
     expect(inserted[0]?.resolveAfter).toEqual(new Date("2026-08-19T10:00:05.000Z"));
   });
 
+  test("ignores a client-supplied entry price", async () => {
+    const { app, inserted } = createTestContext();
+    const response = await app.request("/api/guesses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        direction: "up",
+        playerId: "player-1",
+        entryPrice: 1,
+      }),
+    });
+
+    expect(response.status).toBe(201);
+    expect(inserted[0]?.entryPrice).toBe(latestPrice);
+    expect(await response.json()).toMatchObject({ entryPrice: latestPrice });
+  });
+
   test.each([
-    [{ direction: "sideways", entryPrice: 59_321.25, playerId: "player-1" }, "direction must be 'up' or 'down'"],
-    [{ direction: "down", entryPrice: 0, playerId: "player-1" }, "entryPrice must be a positive number"],
-    [{ direction: "down", entryPrice: 59_321.25 }, "playerId must be a non-empty string"],
-    [{ direction: "down", entryPrice: 59_321.25, playerId: "   " }, "playerId must be a non-empty string"],
-    [{ direction: "down", entryPrice: 59_321.25, playerId: 123 }, "playerId must be a non-empty string"],
+    [{ direction: "sideways", playerId: "player-1" }, "direction must be 'up' or 'down'"],
+    [{ direction: "down" }, "playerId must be a non-empty string"],
+    [{ direction: "down", playerId: "   " }, "playerId must be a non-empty string"],
+    [{ direction: "down", playerId: 123 }, "playerId must be a non-empty string"],
   ])("rejects invalid input", async (body, error) => {
     const { app, inserted } = createTestContext();
     const response = await app.request("/api/guesses", {
@@ -215,6 +239,28 @@ describe("POST /api/guesses", () => {
 
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: "invalid JSON body" });
+  });
+
+  test("returns 503 instead of accepting a guess before a price is available", async () => {
+    const latestPriceStore = new InMemoryLatestPriceStore();
+    const inserted: PendingGuess[] = [];
+    const app = createApi({
+      ...createRequiredApiDependencies(latestPriceStore),
+      guessRepository: {
+        async insert(guess) { inserted.push(guess); },
+        async findById() { return null; },
+      },
+    });
+
+    const response = await app.request("/api/guesses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ direction: "up", playerId: "player-1" }),
+    });
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: "price not available" });
+    expect(inserted).toHaveLength(0);
   });
 });
 
@@ -244,7 +290,14 @@ describe("GET /api/price", () => {
   });
 
   test("returns 503 before a price has been received", async () => {
-    const { app } = createTestContext();
+    const latestPriceStore = new InMemoryLatestPriceStore();
+    const app = createApi({
+      ...createRequiredApiDependencies(latestPriceStore),
+      guessRepository: {
+        async insert() {},
+        async findById() { return null; },
+      },
+    });
 
     const response = await app.request("/api/price");
 
@@ -298,7 +351,7 @@ describe("GET /api/guesses/:id", () => {
     await app.request("/api/guesses", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ direction: "down", entryPrice: 60_000, playerId: "player-1" }),
+      body: JSON.stringify({ direction: "down", playerId: "player-1" }),
     });
 
     const response = await app.request(`/api/guesses/${guessId}`);
@@ -307,7 +360,7 @@ describe("GET /api/guesses/:id", () => {
       guessId,
       playerId: "player-1",
       direction: "down",
-      entryPrice: 60_000,
+      entryPrice: latestPrice,
       status: "pending",
       createdAt: "2026-08-19T10:00:00.000Z",
       resolveAfter: "2026-08-19T10:01:00.000Z",

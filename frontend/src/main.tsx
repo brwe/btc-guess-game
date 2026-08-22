@@ -144,12 +144,20 @@ function App() {
 
     let active = true;
     let interval: number | undefined;
+    let checking = false;
+    let completed = false;
     const delay = Math.max(0, Date.parse(activeGuess.resolveAfter) - Date.now());
 
     async function checkGuess() {
+      if (!active || checking || completed) return;
+      checking = true;
+
       try {
         const guess = await getJson<GuessResponse>(`/api/guesses/${activeGuess.guessId}`);
         if (!active || guess.status === "pending" || guess.resolvedPrice === null) return;
+
+        completed = true;
+        if (interval !== undefined) window.clearInterval(interval);
 
         const won = guess.direction === "up"
           ? guess.resolvedPrice > guess.entryPrice
@@ -180,6 +188,8 @@ function App() {
         if (active) {
           setError(requestError instanceof Error ? requestError.message : String(requestError));
         }
+      } finally {
+        checking = false;
       }
     }
 
@@ -204,13 +214,13 @@ function App() {
       const result = await getJson<{
         guessId: string;
         status: "pending";
+        entryPrice: number;
         resolveAfter: string;
       }>("/api/guesses", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           direction,
-          entryPrice: latestPrice.price,
           playerId: getPlayerId(),
         }),
       });
@@ -218,7 +228,7 @@ function App() {
         guessId: result.guessId,
         direction,
         resolveAfter: result.resolveAfter,
-        entryPrice: latestPrice.price,
+        entryPrice: result.entryPrice,
       };
       localStorage.setItem(ACTIVE_GUESS_KEY, JSON.stringify(guess));
       setActiveGuess(guess);

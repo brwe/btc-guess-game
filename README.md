@@ -14,6 +14,8 @@ This app lets players guess whether the BTC price will be higher or lower after 
 
 - The backend keeps the latest BTC/USD price and the timestamp of the most recent update in memory.
 
+- The price displayed by the frontend is informational and can become stale while a guess request is in transit. The client sends only the player id and direction; when the backend accepts the request, it snapshots its latest known price, persists that value as the guess's entry price, and returns it in the response. That authoritative entry price can therefore differ slightly from the price the player saw when clicking. The frontend displays the returned entry price for the active guess. This tradeoff prevents clients from choosing or manipulating their own entry price.
+
 - Pending guesses use PostgreSQL as the source of truth instead of being duplicated in an in-memory map. When a price update arrives, the resolution design queries indexed pending guesses whose `resolve_after` timestamp has passed and whose entry price differs from the new price. This avoids synchronizing an in-memory copy with the database during one backend run.
 
 - Price updates are passed to a source-agnostic processor as `{ price, observedAt }`. Tests, simulations, and the Coinbase WebSocket adapter call the same method. `observedAt` is the exchange event timestamp used to decide whether `resolve_after` has passed.
@@ -164,9 +166,24 @@ The RDS instance is not publicly accessible. The ECS service can connect on the 
 TODOS:
 
 - make the app work:
-  - concurrency issues
-  - migration handling
+  - ~~concurrency issues~~ -> don't do
+  - ~~migration handling~~ -> don't do
   - deployment 
   - design
   - documentation
   - code review
+  - ~~stale state frontend if db was dropped~~ -> don't do
+
+
+4. Entry price is controlled by the client
+The browser sends entryPrice. A malicious or merely stale client can submit a price unrelated to the backend’s current price.
+There is also a timing race between displaying a price and submitting the guess. The backend should choose the authoritative entry price when inserting the guess; the client should send only:
+{
+  "playerId": "...",
+  "direction": "up"
+}
+
+
+5. Frontend polling can count a result twice
+The polling interval launches checkGuess() every two seconds without checking whether the previous request is still running. If a request takes longer than two seconds, two resolved responses can both increment the locally stored score.
+Use an in-flight guard, or preferably calculate score on the backend from uniquely resolved guesses rather than incrementing it in browser storage.

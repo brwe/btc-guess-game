@@ -19,7 +19,6 @@ type ApiDependencies = {
 
 const registerGuessSchema = z.object({
   direction: z.enum(["up", "down"]),
-  entryPrice: z.number().positive(),
   playerId: z.string().trim().min(1),
 });
 
@@ -98,16 +97,19 @@ export function createApi({
       }
 
       const invalidField = result.error.issues[0]?.path[0];
-      const error = invalidField === "entryPrice"
-        ? "entryPrice must be a positive number"
-        : invalidField === "playerId"
-          ? "playerId must be a non-empty string"
-          : "direction must be 'up' or 'down'";
+      const error = invalidField === "playerId"
+        ? "playerId must be a non-empty string"
+        : "direction must be 'up' or 'down'";
 
       return context.json({ error }, 400);
     }),
     async (context) => {
       const body = context.req.valid("json");
+      const latestPrice = latestPriceStore.get();
+      if (!latestPrice) {
+        return context.json({ error: "price not available" }, 503);
+      }
+
       const guessId = createId();
       const createdAt = now();
       const resolveAfter = new Date(createdAt.getTime() + guessDurationSeconds * 1_000);
@@ -116,7 +118,7 @@ export function createApi({
         id: guessId,
         playerId: body.playerId,
         direction: body.direction,
-        entryPrice: body.entryPrice,
+        entryPrice: latestPrice.price,
         createdAt,
         resolveAfter,
       });
@@ -126,6 +128,7 @@ export function createApi({
       return context.json({
         guessId,
         status: "pending" as const,
+        entryPrice: latestPrice.price,
         resolveAfter: resolveAfter.toISOString(),
       }, 201);
     },
