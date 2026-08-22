@@ -7,7 +7,6 @@ import { z } from "zod";
 import { PendingGuessConflictError } from "./guessRepository";
 import type { GuessRepository, GuessRow, PlayerGuessReader, PlayerScore, PlayerScoreReader } from "./guessRepository";
 import type { LatestPriceReader } from "./latestPriceStore";
-import type { PriceMessageProcessor } from "./priceMessageProcessor";
 import type { RealtimeEvent, RealtimeEventSubscriber } from "./realtimeEvents";
 
 type ApiDependencies = {
@@ -16,7 +15,6 @@ type ApiDependencies = {
   playerScoreReader: PlayerScoreReader;
   realtimeEventSubscriber: RealtimeEventSubscriber;
   latestPriceStore: LatestPriceReader;
-  priceMessageProcessor: PriceMessageProcessor;
   guessDurationSeconds: number;
   createId?: () => string;
   now?: () => Date;
@@ -33,7 +31,6 @@ export function createApi({
   playerScoreReader,
   realtimeEventSubscriber,
   latestPriceStore,
-  priceMessageProcessor,
   guessDurationSeconds,
   createId = () => crypto.randomUUID(),
   now = () => new Date(),
@@ -79,23 +76,6 @@ export function createApi({
       observedAt: latestPrice.observedAt.toISOString(),
     });
   });
-
-  app.post(
-    "/api/price-messages",
-    zValidator("json", z.object({
-      price: z.number().positive(),
-      observedAt: z.string().datetime().optional(),
-    })),
-    async (context) => {
-      const body = context.req.valid("json");
-      const result = await priceMessageProcessor.process({
-        price: body.price,
-        observedAt: body.observedAt ? new Date(body.observedAt) : now(),
-      });
-
-      return context.json(result);
-    },
-  );
 
   app.post(
     "/api/guesses",

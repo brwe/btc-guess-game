@@ -3,8 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "bun test",
-    "simulate:price": "bun src/simulatePriceMessage.ts"
+    "test": "bun test"
   },
   "dependencies": {
     "@hono/zod-validator": "^0.9.0",

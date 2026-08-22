@@ -60,7 +60,6 @@ const app = createApi({
   playerScoreReader: guessRepository,
   realtimeEventSubscriber: realtimeEvents,
   latestPriceStore,
-  priceMessageProcessor,
   guessDurationSeconds,
 });
 

@@ -3,7 +3,6 @@ import { createApi } from "../src/api";
 import { PendingGuessConflictError } from "../src/guessRepository";
 import type { GuessRepository, GuessRow, PendingGuess } from "../src/guessRepository";
 import { InMemoryLatestPriceStore } from "../src/latestPriceStore";
-import { PriceMessageProcessor } from "../src/priceMessageProcessor";
 import { InMemoryRealtimeEvents } from "../src/realtimeEvents";
 
 const guessId = "6c3a2fc2-bcf5-4f5f-a755-21d91ff21973";
@@ -26,11 +25,6 @@ function createRequiredApiDependencies(
       },
     },
     realtimeEventSubscriber: new InMemoryRealtimeEvents(),
-    priceMessageProcessor: new PriceMessageProcessor({
-      async resolveEligible() {
-        return [];
-      },
-    }, latestPriceStore),
     guessDurationSeconds: 60,
   };
 }
@@ -326,49 +320,23 @@ describe("GET /api/price", () => {
   });
 });
 
-describe("POST /api/price-messages", () => {
-  test("processes a simulated message and makes it available as the latest price", async () => {
-    const latestPriceStore = new InMemoryLatestPriceStore();
-    const priceMessageProcessor = new PriceMessageProcessor({
-      async resolveEligible() {
-        return [{ id: guessId, playerId: "player-1" }];
-      },
-    }, latestPriceStore);
+describe("removed price injection endpoint", () => {
+  test("does not expose POST /api/price-messages", async () => {
     const app = createApi({
+      ...createRequiredApiDependencies(),
       guessRepository: {
         async insert() {},
         async findById() { return null; },
       },
-      playerScoreReader: {
-        async getPlayerScore() { return { wins: 0, losses: 0 }; },
-      },
-      playerGuessReader: {
-        async findPlayerGuesses() { return []; },
-      },
-      realtimeEventSubscriber: new InMemoryRealtimeEvents(),
-      latestPriceStore,
-      priceMessageProcessor,
-      guessDurationSeconds: 60,
     });
 
     const response = await app.request("/api/price-messages", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        price: 63_000,
-        observedAt: "2026-08-21T12:02:00.000Z",
-      }),
+      body: JSON.stringify({ price: 63_000 }),
     });
 
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
-      resolvedCount: 1,
-      resolvedGuessIds: [guessId],
-    });
-    expect(latestPriceStore.get()).toEqual({
-      price: 63_000,
-      observedAt: new Date("2026-08-21T12:02:00.000Z"),
-    });
+    expect(response.status).toBe(404);
   });
 });
 

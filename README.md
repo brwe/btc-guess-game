@@ -62,16 +62,6 @@ To run the short-duration local game with Coinbase's higher-frequency `ticker` c
 make fullstack-up-realtime
 ```
 
-## Simulate a Price Update
-
-With the Docker stack running, pass a price and an optional ISO 8601 exchange timestamp to the source-agnostic price processor:
-
-```bash
-docker compose exec backend bun run simulate:price -- 62000 2026-08-21T12:01:00.000Z
-```
-
-If the timestamp is omitted, the simulator uses the current time. The command prints the number and ids of guesses resolved by that price update.
-
 ## Local Docker Scaffold
 
 The React frontend displays the latest BTC/USD price, score, wins, and losses. A player can submit one `up` or `down` guess at a time. Both buttons are disabled while the guess is pending.
@@ -80,7 +70,7 @@ The browser opens `GET /api/players/:playerId/events` as an SSE stream. `price-u
 
 The backend derives wins and losses from resolved guesses and returns the current score as `wins - losses`. It also determines whether each resolved guess was won or lost. This keeps all game calculations authoritative even if an event is delivered more than once or the application is open in multiple browser tabs.
 
-The frontend reads the latest price from `GET /api/price`. During local development, `bun run simulate:price -- <price> [observed-at]` sends a price message through the running backend, updates the in-memory latest price, and resolves eligible guesses.
+The frontend reads the latest price from `GET /api/price`. Price updates enter the backend only through its Coinbase WebSocket connection; there is no public endpoint for injecting prices.
 
 ## Realtime Updates and SSE Decision
 
