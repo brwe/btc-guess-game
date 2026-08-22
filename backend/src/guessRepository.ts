@@ -44,16 +44,15 @@ export interface GuessResolutionRepository {
 export class PostgresGuessRepository implements GuessRepository, GuessResolutionRepository {
   constructor(private readonly sql: postgres.Sql) { }
 
-  async initialize() {
+  async initialize({ reset = false }: { reset?: boolean } = {}) {
+    if (reset) {
+      await this.sql`
+        DROP TABLE IF EXISTS guesses
+      `;
+    }
 
-    /// This is because this is just a pet peoject and I do not think ading migrations etc are worth it here. 
-    // In reality I would use a proper handling of this.
     await this.sql`
-      DROP TABLE IF EXISTS guesses
-    `;
-
-    await this.sql`
-      CREATE TABLE guesses (
+      CREATE TABLE IF NOT EXISTS guesses (
         id UUID PRIMARY KEY,
         player_id TEXT NULL,
         direction TEXT NOT NULL CHECK (direction IN ('up', 'down')),
@@ -67,7 +66,7 @@ export class PostgresGuessRepository implements GuessRepository, GuessResolution
     `;
 
     await this.sql`
-      CREATE INDEX guesses_status_resolve_after_idx
+      CREATE INDEX IF NOT EXISTS guesses_status_resolve_after_idx
       ON guesses (status, resolve_after)
     `;
   }

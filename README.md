@@ -20,7 +20,7 @@ This app lets players guess whether the BTC price will be higher or lower after 
 
 - Resolved guesses store `resolved_at` and `resolved_price`. The result and score change are derived from `direction`, `entry_price`, and `resolved_price` instead of being persisted as duplicate data.
 
-- This pet-project setup does not use database migrations. Every backend start drops and recreates the `guesses` table, so all guess data is intentionally lost on restart. A deployed version with persistent player scores would replace this initializer with versioned migrations before storing user data.
+- This pet-project setup does not use database migrations. Local Docker sets `RESET_DATABASE_ON_START=true`, so local backend starts recreate the `guesses` table. The AWS task sets it to `false` and uses idempotent table initialization so ECS replacements do not erase RDS data. Versioned migrations should replace this initializer before evolving a deployed schema.
 
 - This database-query approach has a scalability limitation: if every backend instance consumes the same price stream, every instance can query the same eligible guesses and attempt to resolve them. Conditional updates inside a transaction can preserve correctness, but the duplicated queries still waste database capacity. If horizontal scaling becomes necessary, price processing should move to one elected resolver or a dedicated worker; alternatively, workers can claim disjoint batches with PostgreSQL row locking such as `FOR UPDATE SKIP LOCKED`.
 
@@ -73,3 +73,90 @@ The browser waits until the backend-provided `resolveAfter` timestamp, then poll
 The current score is derived as `wins - losses`. Persisting score in PostgreSQL and loading it by anonymous player id remains backend work; browser storage is only the current frontend implementation.
 
 The frontend reads the latest price from `GET /api/price`. During local development, `bun run simulate:price -- <price> [observed-at]` sends a price message through the running backend, updates the in-memory latest price, and resolves eligible guesses.
+
+## Deploy to AWS
+
+The CDK stack in `infra/` creates:
+
+- A two-AZ VPC with public subnets and isolated database subnets, without NAT gateways.
+- One public ECS Fargate task with `0.25` vCPU and `0.5 GB` memory.
+- An internet-facing Application Load Balancer.
+- A private, encrypted, Single-AZ PostgreSQL `db.t4g.micro` RDS instance with 20 GB GP3 storage.
+- A private S3 frontend bucket and CloudFront distribution.
+- CloudFront routing from `/api/*` to the load balancer and all other paths to S3.
+- A generated Secrets Manager database credential injected into the ECS task.
+
+Prerequisites are Docker, Bun, AWS credentials, and a CDK-bootstrapped AWS account. The default deployment region is `eu-central-1`.
+
+### AWS credentials
+
+CDK uses the standard AWS SDK credential chain. Do not put AWS access keys in this repository. Configure credentials with one of these options:
+
+1. For an IAM access key created for local development, store it in the AWS CLI credentials file:
+
+   ```bash
+   aws configure --profile epilot
+   ```
+
+   `aws configure` writes the credentials to `~/.aws/credentials` and configuration to `~/.aws/config`; neither file belongs in the project.
+
+2. In CI, use the CI provider's secret store or OpenID Connect integration to supply short-lived AWS credentials. Do not commit credentials or place them in frontend environment variables.
+
+Confirm the selected identity and account before deploying:
+
+```bash
+aws sts get-caller-identity --profile epilot
+```
+
+The infrastructure package scripts and every AWS CLI example below select `--profile epilot` explicitly, so exporting `AWS_PROFILE` is not required.
+
+### Deploy
+
+```bash
+cd infra
+bun install
+bun run bootstrap
+bun run synth
+bun run deploy
+```
+
+The deployment outputs `ApplicationUrl`, which is the public CloudFront URL. The frontend build is produced inside a Bun Docker container during synthesis, and the backend image is built and uploaded as a CDK Docker asset.
+
+### After deployment
+
+1. Copy the `ApplicationUrl` value printed under `Outputs` by `bun run deploy`, or retrieve it later:
+
+   ```bash
+   aws cloudformation describe-stacks \
+     --stack-name EpilotChallengeStack \
+     --query "Stacks[0].Outputs[?OutputKey=='ApplicationUrl'].OutputValue" \
+     --output text \
+     --profile epilot
+   ```
+
+2. Open `ApplicationUrl`. CloudFront can take several minutes to finish distributing a new deployment.
+
+3. Verify the backend through the same CloudFront domain:
+
+   ```bash
+   APPLICATION_URL=$(aws cloudformation describe-stacks \
+     --stack-name EpilotChallengeStack \
+     --query "Stacks[0].Outputs[?OutputKey=='ApplicationUrl'].OutputValue" \
+     --output text \
+     --profile epilot)
+   curl "$APPLICATION_URL/health"
+   curl "$APPLICATION_URL/api/price"
+   ```
+
+4. In the frontend, wait until a BTC/USD price appears, submit an `up` or `down` guess, and confirm that it resolves after the configured 60-second duration and a subsequent price change.
+
+5. If the health check or price endpoint fails, inspect the `EpilotChallengeStack` ECS service events and the `/aws/ecs/` CloudWatch log group created by the stack. The backend creates its database table on startup; no manual SQL setup is required for this schema.
+
+This short-lived challenge stack uses `RemovalPolicy.DESTROY` for RDS, S3, and log storage. Destroying it permanently deletes the database and frontend files:
+
+```bash
+cd infra
+bun run destroy
+```
+
+The RDS instance is not publicly accessible. The ECS service can connect on the PostgreSQL port, while the public Fargate address provides outbound access to Coinbase without a NAT gateway.

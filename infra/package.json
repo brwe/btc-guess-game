@@ -1,0 +1,21 @@
+{
+  "name": "epilot-challenge-infrastructure",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "cdk": "cdk --profile epilot",
+    "bootstrap": "cdk bootstrap --profile epilot",
+    "synth": "cdk synth --profile epilot",
+    "deploy": "cdk deploy --profile epilot",
+    "destroy": "cdk destroy --profile epilot"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.266.0",
+    "constructs": "^10.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "aws-cdk": "^2.1138.0",
+    "typescript": "^7.0.2"
+  }
+}
