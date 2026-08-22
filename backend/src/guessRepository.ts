@@ -3,7 +3,7 @@ import type postgres from "postgres";
 export type Direction = "up" | "down";
 export type GuessStatus = "pending" | "resolved";
 
-export type PendingGuess = {
+export type NewGuess = {
   id: string;
   playerId: string;
   direction: Direction;
@@ -49,7 +49,7 @@ type ResolvedGuessRow = {
 const pendingGuessConstraint = "guesses_one_pending_per_player_idx";
 
 export interface GuessRepository {
-  insert(guess: PendingGuess): Promise<void>;
+  insert(guess: NewGuess): Promise<void>;
   resolveEligible(price: number, observedAt: Date): Promise<ResolvedGuess[]>;
   getPlayerScore(playerId: string): Promise<PlayerScore>;
   findPlayerGuesses(playerId: string, limit: number): Promise<GuessRow[]>;
@@ -102,7 +102,7 @@ export class PostgresGuessRepository implements GuessRepository {
     `;
   }
 
-  async insert(guess: PendingGuess) {
+  async insert(guess: NewGuess) {
     try {
       await this.sql`
         INSERT INTO guesses (id, player_id, direction, entry_price, status, created_at, resolve_after)

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createApi } from "../src/api";
 import { PendingGuessConflictError } from "../src/guessRepository";
-import type { GuessRepository, GuessRow, PendingGuess } from "../src/guessRepository";
+import type { GuessRepository, GuessRow, NewGuess } from "../src/guessRepository";
 import { InMemoryLatestPriceStore } from "../src/latestPriceStore";
 import { InMemoryRealtimeEvents } from "../src/realtimeEvents";
 
@@ -39,7 +39,7 @@ function createLatestPriceStore() {
 }
 
 function createTestContext(existingRows: GuessRow[] = []) {
-  const inserted: PendingGuess[] = [];
+  const inserted: NewGuess[] = [];
   const rows = [...existingRows];
   const repository = createApiGuessRepository({
     async insert(guess) {
@@ -100,7 +100,7 @@ describe("POST /api/guesses", () => {
   });
 
   test("allows only one concurrent pending guess per player", async () => {
-    const inserted: PendingGuess[] = [];
+    const inserted: NewGuess[] = [];
     const guessIds = [
       "6c3a2fc2-bcf5-4f5f-a755-21d91ff21973",
       "208d7707-9385-4f6e-8d41-c01272468d58",
@@ -144,7 +144,7 @@ describe("POST /api/guesses", () => {
   });
 
   test("generates a UUID when no id factory is provided", async () => {
-    const inserted: PendingGuess[] = [];
+    const inserted: NewGuess[] = [];
     const app = createApi({
       ...createRequiredApiDependencies(),
       guessRepository: createApiGuessRepository({
@@ -168,7 +168,7 @@ describe("POST /api/guesses", () => {
   });
 
   test("uses the configured guess duration", async () => {
-    const inserted: PendingGuess[] = [];
+    const inserted: NewGuess[] = [];
     const app = createApi({
       ...createRequiredApiDependencies(),
       guessRepository: createApiGuessRepository({
@@ -246,7 +246,7 @@ describe("POST /api/guesses", () => {
 
   test("returns 503 instead of accepting a guess before a price is available", async () => {
     const latestPriceStore = new InMemoryLatestPriceStore();
-    const inserted: PendingGuess[] = [];
+    const inserted: NewGuess[] = [];
     const app = createApi({
       ...createRequiredApiDependencies(latestPriceStore),
       guessRepository: createApiGuessRepository({
