@@ -4,12 +4,14 @@ import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { PendingGuessConflictError } from "./guessRepository";
-import type { GuessRepository, GuessRow } from "./guessRepository";
+import type { GuessRepository, GuessRow, PlayerGuessReader, PlayerScore, PlayerScoreReader } from "./guessRepository";
 import type { LatestPriceReader } from "./latestPriceStore";
 import type { PriceMessageProcessor } from "./priceMessageProcessor";
 
 type ApiDependencies = {
   guessRepository: GuessRepository;
+  playerGuessReader: PlayerGuessReader;
+  playerScoreReader: PlayerScoreReader;
   latestPriceStore: LatestPriceReader;
   priceMessageProcessor: PriceMessageProcessor;
   guessDurationSeconds: number;
@@ -24,6 +26,8 @@ const registerGuessSchema = z.object({
 
 export function createApi({
   guessRepository,
+  playerGuessReader,
+  playerScoreReader,
   latestPriceStore,
   priceMessageProcessor,
   guessDurationSeconds,
@@ -134,16 +138,29 @@ export function createApi({
     },
   );
 
-  app.get("/api/guesses/:guessId", async (context) => {
-    const guessId = context.req.param("guessId");
-    const guess = await guessRepository.findById(guessId);
-
-    if (!guess) {
-      return context.json({ error: "guess not found" }, 404);
+  app.get("/api/players/:playerId/guesses", async (context) => {
+    const playerId = context.req.param("playerId").trim();
+    const rawLimit = context.req.query("limit") ?? "20";
+    const limit = Number(rawLimit);
+    if (!playerId) {
+      return context.json({ error: "playerId must be a non-empty string" }, 400);
+    }
+    if (!/^\d+$/.test(rawLimit) || !Number.isInteger(limit) || limit < 1 || limit > 100) {
+      return context.json({ error: "limit must be an integer between 1 and 100" }, 400);
     }
 
-    console.log(`[api] GET /api/guesses/${guessId}`);
-    return context.json(serializeGuess(guess));
+    const guesses = await playerGuessReader.findPlayerGuesses(playerId, limit);
+    return context.json(guesses.map(serializeGuess));
+  });
+
+  app.get("/api/players/:playerId/score", async (context) => {
+    const playerId = context.req.param("playerId").trim();
+    if (!playerId) {
+      return context.json({ error: "playerId must be a non-empty string" }, 400);
+    }
+
+    const score = await playerScoreReader.getPlayerScore(playerId);
+    return context.json(serializeScore(score));
   });
 
   app.notFound((context) => context.text("Not found", 404));
@@ -162,5 +179,23 @@ function serializeGuess(guess: GuessRow) {
     resolveAfter: guess.resolve_after.toISOString(),
     resolvedAt: guess.resolved_at?.toISOString() ?? null,
     resolvedPrice: guess.resolved_price,
+    result: getGuessResult(guess),
+  };
+}
+
+function getGuessResult(guess: GuessRow) {
+  if (guess.status !== "resolved" || guess.resolved_price === null) return null;
+
+  const won = guess.direction === "up"
+    ? guess.resolved_price > guess.entry_price
+    : guess.resolved_price < guess.entry_price;
+  return won ? "won" as const : "lost" as const;
+}
+
+function serializeScore(score: PlayerScore) {
+  return {
+    wins: score.wins,
+    losses: score.losses,
+    score: score.wins - score.losses,
   };
 }

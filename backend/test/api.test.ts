@@ -14,6 +14,16 @@ function createRequiredApiDependencies(
 ) {
   return {
     latestPriceStore,
+    playerScoreReader: {
+      async getPlayerScore() {
+        return { wins: 0, losses: 0 };
+      },
+    },
+    playerGuessReader: {
+      async findPlayerGuesses() {
+        return [];
+      },
+    },
     priceMessageProcessor: new PriceMessageProcessor({
       async resolveEligible() {
         return [];
@@ -54,6 +64,14 @@ function createTestContext(existingRows: GuessRow[] = []) {
   const app = createApi({
     ...createRequiredApiDependencies(),
     guessRepository: repository,
+    playerGuessReader: {
+      async findPlayerGuesses(playerId, limit) {
+        return rows
+          .filter((row) => row.player_id === playerId)
+          .sort((left, right) => right.resolve_after.getTime() - left.resolve_after.getTime())
+          .slice(0, limit);
+      },
+    },
     createId: () => guessId,
     now: () => createdAt,
   });
@@ -319,6 +337,12 @@ describe("POST /api/price-messages", () => {
         async insert() {},
         async findById() { return null; },
       },
+      playerScoreReader: {
+        async getPlayerScore() { return { wins: 0, losses: 0 }; },
+      },
+      playerGuessReader: {
+        async findPlayerGuesses() { return []; },
+      },
       latestPriceStore,
       priceMessageProcessor,
       guessDurationSeconds: 60,
@@ -345,8 +369,8 @@ describe("POST /api/price-messages", () => {
   });
 });
 
-describe("GET /api/guesses/:id", () => {
-  test("returns a persisted guess from the repository", async () => {
+describe("GET /api/players/:playerId/guesses", () => {
+  test("returns the player's latest guess", async () => {
     const { app } = createTestContext();
     await app.request("/api/guesses", {
       method: "POST",
@@ -354,9 +378,9 @@ describe("GET /api/guesses/:id", () => {
       body: JSON.stringify({ direction: "down", playerId: "player-1" }),
     });
 
-    const response = await app.request(`/api/guesses/${guessId}`);
+    const response = await app.request("/api/players/player-1/guesses?limit=1");
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toEqual([{
       guessId,
       playerId: "player-1",
       direction: "down",
@@ -366,14 +390,83 @@ describe("GET /api/guesses/:id", () => {
       resolveAfter: "2026-08-19T10:01:00.000Z",
       resolvedAt: null,
       resolvedPrice: null,
-    });
+      result: null,
+    }]);
   });
 
-  test("returns 404 for an unknown guess", async () => {
-    const { app } = createTestContext();
-    const response = await app.request(`/api/guesses/${guessId}`);
+  test("returns the backend-computed result", async () => {
+    const resolvedGuess: GuessRow = {
+      id: guessId,
+      player_id: "player-1",
+      direction: "up",
+      entry_price: 60_000,
+      status: "resolved",
+      created_at: createdAt,
+      resolve_after: new Date("2026-08-19T10:01:00.000Z"),
+      resolved_at: new Date("2026-08-19T10:01:05.000Z"),
+      resolved_price: 61_000,
+    };
+    const app = createApi({
+      ...createRequiredApiDependencies(),
+      guessRepository: {
+        async insert() {},
+        async findById() { return resolvedGuess; },
+      },
+      playerGuessReader: {
+        async findPlayerGuesses(playerId, limit) {
+          expect(playerId).toBe("player-1");
+          expect(limit).toBe(1);
+          return [resolvedGuess];
+        },
+      },
+    });
 
-    expect(response.status).toBe(404);
-    expect(await response.json()).toEqual({ error: "guess not found" });
+    const response = await app.request("/api/players/player-1/guesses?limit=1");
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual([expect.objectContaining({
+      result: "won",
+    })]);
+  });
+
+  test("returns an empty collection when the player has no guesses", async () => {
+    const { app } = createTestContext();
+    const response = await app.request("/api/players/player-1/guesses?limit=1");
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual([]);
+  });
+
+  test.each(["0", "101", "1.5", "invalid"])('rejects invalid limit "%s"', async (limit) => {
+    const { app } = createTestContext();
+    const response = await app.request(`/api/players/player-1/guesses?limit=${limit}`);
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "limit must be an integer between 1 and 100",
+    });
+  });
+});
+
+describe("GET /api/players/:playerId/score", () => {
+  test("returns the score calculated by the backend", async () => {
+    const app = createApi({
+      ...createRequiredApiDependencies(),
+      guessRepository: {
+        async insert() {},
+        async findById() { return null; },
+      },
+      playerScoreReader: {
+        async getPlayerScore(playerId) {
+          expect(playerId).toBe("player-1");
+          return { wins: 4, losses: 2 };
+        },
+      },
+    });
+
+    const response = await app.request("/api/players/player-1/score");
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ wins: 4, losses: 2, score: 2 });
   });
 });

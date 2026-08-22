@@ -17,13 +17,14 @@ type GuessResponse = {
   status: "pending" | "resolved";
   resolveAfter: string;
   resolvedPrice: number | null;
+  result: "won" | "lost" | null;
 };
 
 type ActiveGuess = {
   guessId: string;
   direction: Direction;
   resolveAfter: string;
-  entryPrice?: number;
+  entryPrice: number;
 };
 
 type ResolvedGuess = {
@@ -31,34 +32,21 @@ type ResolvedGuess = {
   direction: Direction;
   entryPrice: number;
   resolvedPrice: number;
-  won: boolean;
+  result: "won" | "lost";
 };
 
 type Score = {
   wins: number;
   losses: number;
+  score: number;
 };
 
-const ACTIVE_GUESS_KEY = "btc-game-active-guess";
-const LAST_RESOLVED_GUESS_KEY = "btc-game-last-resolved-guess";
 const PLAYER_ID_KEY = "btc-game-player-id";
-const SCORE_KEY = "btc-game-score";
 
 const usdFormatter = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
 });
-
-function readStoredValue<T>(key: string, fallback: T): T {
-  const stored = localStorage.getItem(key);
-  if (!stored) return fallback;
-
-  try {
-    return JSON.parse(stored) as T;
-  } catch {
-    return fallback;
-  }
-}
 
 function getPlayerId() {
   const existing = localStorage.getItem(PLAYER_ID_KEY);
@@ -80,17 +68,22 @@ async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
+async function getPlayerScore() {
+  const playerId = encodeURIComponent(getPlayerId());
+  return getJson<Score>(`/api/players/${playerId}/score`);
+}
+
+async function getLatestGuess() {
+  const playerId = encodeURIComponent(getPlayerId());
+  const guesses = await getJson<GuessResponse[]>(`/api/players/${playerId}/guesses?limit=1`);
+  return guesses[0] ?? null;
+}
+
 function App() {
   const [latestPrice, setLatestPrice] = useState<PriceResponse | null>(null);
-  const [activeGuess, setActiveGuess] = useState<ActiveGuess | null>(() =>
-    readStoredValue<ActiveGuess | null>(ACTIVE_GUESS_KEY, null)
-  );
-  const [lastResolvedGuess, setLastResolvedGuess] = useState<ResolvedGuess | null>(() =>
-    readStoredValue<ResolvedGuess | null>(LAST_RESOLVED_GUESS_KEY, null)
-  );
-  const [score, setScore] = useState<Score>(() =>
-    readStoredValue<Score>(SCORE_KEY, { wins: 0, losses: 0 })
-  );
+  const [activeGuess, setActiveGuess] = useState<ActiveGuess | null>(null);
+  const [lastResolvedGuess, setLastResolvedGuess] = useState<ResolvedGuess | null>(null);
+  const [score, setScore] = useState<Score>({ wins: 0, losses: 0, score: 0 });
   const [secondsRemaining, setSecondsRemaining] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -117,6 +110,49 @@ function App() {
     return () => {
       active = false;
       window.clearInterval(interval);
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadPlayerData() {
+      try {
+        const [backendScore, guess] = await Promise.all([
+          getPlayerScore(),
+          getLatestGuess(),
+        ]);
+        if (!active) return;
+
+        setScore(backendScore);
+        if (guess?.status === "pending") {
+          setActiveGuess({
+            guessId: guess.guessId,
+            direction: guess.direction,
+            resolveAfter: guess.resolveAfter,
+            entryPrice: guess.entryPrice,
+          });
+          setLastResolvedGuess(null);
+        } else if (guess && guess.resolvedPrice !== null && guess.result !== null) {
+          setActiveGuess(null);
+          setLastResolvedGuess({
+            guessId: guess.guessId,
+            direction: guess.direction,
+            entryPrice: guess.entryPrice,
+            resolvedPrice: guess.resolvedPrice,
+            result: guess.result,
+          });
+        }
+      } catch (requestError) {
+        if (active) {
+          setError(requestError instanceof Error ? requestError.message : String(requestError));
+        }
+      }
+    }
+
+    void loadPlayerData();
+    return () => {
+      active = false;
     };
   }, []);
 
@@ -153,31 +189,35 @@ function App() {
       checking = true;
 
       try {
-        const guess = await getJson<GuessResponse>(`/api/guesses/${activeGuess.guessId}`);
-        if (!active || guess.status === "pending" || guess.resolvedPrice === null) return;
+        const guess = await getLatestGuess();
+        if (!active) return;
+        if (!guess) {
+          const backendScore = await getPlayerScore();
+          if (!active) return;
+          completed = true;
+          if (interval !== undefined) window.clearInterval(interval);
+          setScore(backendScore);
+          setActiveGuess(null);
+          setLastResolvedGuess(null);
+          return;
+        }
+        if (guess.status === "pending"
+          || guess.resolvedPrice === null
+          || guess.result === null) return;
 
+        const backendScore = await getPlayerScore();
+        if (!active) return;
         completed = true;
         if (interval !== undefined) window.clearInterval(interval);
 
-        const won = guess.direction === "up"
-          ? guess.resolvedPrice > guess.entryPrice
-          : guess.resolvedPrice < guess.entryPrice;
         const resolvedGuess = {
           guessId: guess.guessId,
           direction: guess.direction,
           entryPrice: guess.entryPrice,
           resolvedPrice: guess.resolvedPrice,
-          won,
+          result: guess.result,
         };
-        setScore((current) => {
-          const next = won
-            ? { ...current, wins: current.wins + 1 }
-            : { ...current, losses: current.losses + 1 };
-          localStorage.setItem(SCORE_KEY, JSON.stringify(next));
-          return next;
-        });
-        localStorage.setItem(LAST_RESOLVED_GUESS_KEY, JSON.stringify(resolvedGuess));
-        localStorage.removeItem(ACTIVE_GUESS_KEY);
+        setScore(backendScore);
         setLastResolvedGuess(resolvedGuess);
         setActiveGuess(null);
         setLatestPrice((current) => current
@@ -230,7 +270,6 @@ function App() {
         resolveAfter: result.resolveAfter,
         entryPrice: result.entryPrice,
       };
-      localStorage.setItem(ACTIVE_GUESS_KEY, JSON.stringify(guess));
       setActiveGuess(guess);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : String(requestError));
@@ -240,8 +279,6 @@ function App() {
   }
 
   const waiting = submitting || activeGuess !== null;
-  const totalScore = score.wins - score.losses;
-
   return (
     <main className="game">
       <p className="label">BTC / USD</p>
@@ -256,18 +293,14 @@ function App() {
           <dl>
             <div>
               <dt>Guessed at</dt>
-              <dd>
-                {activeGuess.entryPrice === undefined
-                  ? "Unavailable"
-                  : usdFormatter.format(activeGuess.entryPrice)}
-              </dd>
+              <dd>{usdFormatter.format(activeGuess.entryPrice)}</dd>
             </div>
           </dl>
         </section>
       ) : lastResolvedGuess ? (
-        <section className={`guess-card resolved ${lastResolvedGuess.won ? "won" : "lost"}`}>
+        <section className={`guess-card resolved ${lastResolvedGuess.result}`}>
           <p className="guess-card-title">Last result</p>
-          <strong className="result">{lastResolvedGuess.won ? "Won" : "Lost"}</strong>
+          <strong className="result">{lastResolvedGuess.result === "won" ? "Won" : "Lost"}</strong>
           <p className="resolved-direction">
             Guessed {lastResolvedGuess.direction === "up" ? "up" : "down"}
           </p>
@@ -285,7 +318,7 @@ function App() {
       ) : null}
 
       <div className="score" aria-label="Score">
-        <strong>{totalScore}</strong>
+        <strong>{score.score}</strong>
         <span>{score.wins} wins</span>
         <span>{score.losses} losses</span>
       </div>

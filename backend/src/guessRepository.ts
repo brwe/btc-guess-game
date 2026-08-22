@@ -28,6 +28,11 @@ export type ResolvedGuess = {
   id: string;
 };
 
+export type PlayerScore = {
+  wins: number;
+  losses: number;
+};
+
 export class PendingGuessConflictError extends Error {
   constructor() {
     super("player already has a pending guess");
@@ -50,7 +55,15 @@ export interface GuessResolutionRepository {
   resolveEligible(price: number, observedAt: Date): Promise<ResolvedGuess[]>;
 }
 
-export class PostgresGuessRepository implements GuessRepository, GuessResolutionRepository {
+export interface PlayerScoreReader {
+  getPlayerScore(playerId: string): Promise<PlayerScore>;
+}
+
+export interface PlayerGuessReader {
+  findPlayerGuesses(playerId: string, limit: number): Promise<GuessRow[]>;
+}
+
+export class PostgresGuessRepository implements GuessRepository, GuessResolutionRepository, PlayerScoreReader, PlayerGuessReader {
   constructor(private readonly sql: postgres.Sql) { }
 
   async initialize({ reset = false }: { reset?: boolean } = {}) {
@@ -90,6 +103,11 @@ export class PostgresGuessRepository implements GuessRepository, GuessResolution
       ON guesses (player_id)
       WHERE status = 'pending'
     `;
+
+    await this.sql`
+      CREATE INDEX IF NOT EXISTS guesses_player_resolve_after_idx
+      ON guesses (player_id, resolve_after DESC, created_at DESC, id DESC)
+    `;
   }
 
   async insert(guess: PendingGuess) {
@@ -119,6 +137,41 @@ export class PostgresGuessRepository implements GuessRepository, GuessResolution
       LIMIT 1
     `;
     return rows[0] ?? null;
+  }
+
+  async findPlayerGuesses(playerId: string, limit: number) {
+    return this.sql<GuessRow[]>`
+      SELECT id, player_id, direction, entry_price, status, created_at, resolve_after,
+             resolved_at, resolved_price
+      FROM guesses
+      WHERE player_id = ${playerId}
+      ORDER BY resolve_after DESC, created_at DESC, id DESC
+      LIMIT ${limit}
+    `;
+  }
+
+  async getPlayerScore(playerId: string) {
+    const rows = await this.sql<PlayerScore[]>`
+      SELECT
+        COUNT(*) FILTER (
+          WHERE status = 'resolved'
+            AND (
+              (direction = 'up' AND resolved_price > entry_price)
+              OR (direction = 'down' AND resolved_price < entry_price)
+            )
+        )::INTEGER AS wins,
+        COUNT(*) FILTER (
+          WHERE status = 'resolved'
+            AND (
+              (direction = 'up' AND resolved_price < entry_price)
+              OR (direction = 'down' AND resolved_price > entry_price)
+            )
+        )::INTEGER AS losses
+      FROM guesses
+      WHERE player_id = ${playerId}
+    `;
+
+    return rows[0] ?? { wins: 0, losses: 0 };
   }
 
   async resolveEligible(price: number, observedAt: Date) {

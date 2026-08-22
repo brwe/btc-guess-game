@@ -32,7 +32,7 @@ This app lets players guess whether the BTC price will be higher or lower after 
 
 - The backend and frontend are written in TypeScript. The backend runs on Bun and uses Hono for HTTP routing, middleware, and request validation. The frontend is built as static files for S3, ideally with CloudFront in front of the bucket.
 
-- The score starts at 0 for a new player and is persisted in the backend.
+- The score starts at 0 for a new player and is calculated by the backend from that player's persisted resolved guesses. The frontend does not determine outcomes or increment score locally; it displays the result, wins, losses, and total score returned by the backend.
 
 - A player can only have one active guess at a time.
 
@@ -70,9 +70,9 @@ If the timestamp is omitted, the simulator uses the current time. The command pr
 
 The React frontend displays the latest BTC/USD price, score, wins, and losses. A player can submit one `up` or `down` guess at a time. Both buttons are disabled while the guess is pending.
 
-The browser waits until the backend-provided `resolveAfter` timestamp, then polls the guess endpoint every two seconds until the backend resolves it. The active guess, anonymous player id, wins, and losses are stored in browser storage so refreshing the page does not discard the current browser session.
+The browser waits until the backend-provided `resolveAfter` timestamp, then polls `GET /api/players/:playerId/guesses?limit=1` every two seconds until the backend resolves the guess. Guesses are ordered by `resolve_after DESC`, with `created_at DESC` and `id DESC` as deterministic tie-breakers. Only the anonymous player id is stored in browser storage; guesses and score are reloaded from the backend and are not stored or incremented by the browser.
 
-The current score is derived as `wins - losses`. Persisting score in PostgreSQL and loading it by anonymous player id remains backend work; browser storage is only the current frontend implementation.
+The backend derives wins and losses from resolved guesses and returns the current score as `wins - losses`. It also determines whether each resolved guess was won or lost. This keeps all game calculations authoritative even if polling requests overlap or the application is open in multiple browser tabs.
 
 The frontend reads the latest price from `GET /api/price`. During local development, `bun run simulate:price -- <price> [observed-at]` sends a price message through the running backend, updates the in-memory latest price, and resolves eligible guesses.
 
@@ -168,6 +168,7 @@ TODOS:
 - make the app work:
   - ~~concurrency issues~~ -> don't do
   - ~~migration handling~~ -> don't do
+  - ~~authorizaton and authentication~~ -> don't do
   - deployment 
   - design
   - documentation
@@ -184,6 +185,4 @@ There is also a timing race between displaying a price and submitting the guess.
 }
 
 
-5. Frontend polling can count a result twice
-The polling interval launches checkGuess() every two seconds without checking whether the previous request is still running. If a request takes longer than two seconds, two resolved responses can both increment the locally stored score.
-Use an in-flight guard, or preferably calculate score on the backend from uniquely resolved guesses rather than incrementing it in browser storage.
+5. ~~Frontend polling can count a result twice~~ -> solved by making the backend authoritative for outcomes and score. The frontend also permits only one resolution request at a time and assigns the returned score instead of incrementing it.
