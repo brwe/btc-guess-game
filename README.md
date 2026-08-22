@@ -38,7 +38,7 @@ This app lets players guess whether the BTC price will be higher or lower after 
 
 - A guess resolves only after at least 60 seconds have passed and the price has changed.
 
-## Run
+## Run locally
 
 From `/Users/a2tirb/robofarm/epilot-challenge`, run:
 
@@ -120,25 +120,31 @@ SSE events are disposable notifications rather than the source of truth. On init
 ### Guess lifecycle
 
 ```text
-Browser                     Backend                    PostgreSQL
-   │                           │                           │
-   │ POST /api/guesses         │                           │
-   ├──────────────────────────►│                           │
-   │                           │ INSERT pending guess      │
-   │                           ├──────────────────────────►│
-   │ 201 + entryPrice          │                           │
-   │     + resolveAfter        │                           │
-   │◄──────────────────────────┤                           │
-   │                           │                           │
-Coinbase price ───────────────►│ resolve eligible guess    │
-   │                           ├──────────────────────────►│
-   │ price-updated SSE         │◄──────────────────────────┤
-   │◄──────────────────────────┤                           │
-   │ guess-resolved SSE        │                           │
-   │◄──────────────────────────┤                           │
-   │ GET latest guess + score  │                           │
-   ├──────────────────────────►│ query authoritative state │
-   │◄──────────────────────────┴───────────────────────────┤
+Browser                     Backend                    PostgreSQL                 Coinbase
+   │                           │                           │                           │
+   │ POST /api/guesses         │                           │                           │
+   ├──────────────────────────►│                           │                           │
+   │                           │ INSERT pending guess      │                           │
+   │                           ├──────────────────────────►│                           │
+   │ 201 + entryPrice          │                           │                           │
+   │     + resolveAfter        │                           │                           │
+   │◄──────────────────────────┤                           │                           │
+   │                           │                           │                           │
+   │                           │                           │ BTC/USD price             │
+   │                           │◄──────────────────────────────────────────────────────┤
+   │                           │ resolve eligible guesses │                           │
+   │                           ├──────────────────────────►│                           │
+   │                           │◄──────────────────────────┤                           │
+   │ price-updated SSE         │                           │                           │
+   │◄──────────────────────────┤                           │                           │
+   │ guess-resolved SSE        │                           │                           │
+   │◄──────────────────────────┤                           │                           │
+   │ GET latest guess + score  │                           │                           │
+   ├──────────────────────────►│                           │                           │
+   │                           │ query authoritative state │                           │
+   │                           ├──────────────────────────►│                           │
+   │                           │◄──────────────────────────┤                           │
+   │◄──────────────────────────┤                           │                           │
 ```
 
 Prices received before `resolve_after` may update the displayed ticker but cannot settle the guess. The first eligible price after `resolve_after` whose value differs from the entry price resolves it.

@@ -94,6 +94,7 @@ export class EpilotChallengeStack extends Stack {
         DB_NAME: "epilot",
         GUESS_DURATION_SECONDS: "60",
         COINBASE_WEBSOCKET_URL: "wss://ws-feed.exchange.coinbase.com",
+        COINBASE_TICKER_CHANNEL: "ticker",
         RESET_DATABASE_ON_START: "false",
       },
       secrets: {
@@ -189,7 +190,7 @@ export class EpilotChallengeStack extends Stack {
     loadBalancer.connections.allowFrom(
       vpcOriginSecurityGroup,
       ec2.Port.tcp(80),
-      "Allow HTTP only from this VPC's CloudFront origins",
+      "Allow HTTP only from CloudFront VPC origins",
     );
 
     new s3deploy.BucketDeployment(this, "FrontendDeployment", {
