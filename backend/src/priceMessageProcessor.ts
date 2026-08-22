@@ -1,4 +1,4 @@
-import type { GuessResolutionRepository } from "./guessRepository";
+import type { GuessRepository } from "./guessRepository";
 import type { LatestPriceWriter } from "./latestPriceStore";
 import { noRealtimeEvents } from "./realtimeEvents";
 import type { RealtimeEventPublisher } from "./realtimeEvents";
@@ -15,7 +15,7 @@ export type PriceProcessingResult = {
 
 export class PriceMessageProcessor {
   constructor(
-    private readonly guessRepository: GuessResolutionRepository,
+    private readonly guessRepository: Pick<GuessRepository, "resolveEligible">,
     private readonly latestPriceStore: LatestPriceWriter,
     private readonly realtimeEvents: RealtimeEventPublisher = noRealtimeEvents,
   ) { }

@@ -5,16 +5,14 @@ import { streamSSE } from "hono/streaming";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { PendingGuessConflictError } from "./guessRepository";
-import type { GuessRepository, GuessRow, PlayerGuessReader, PlayerScore, PlayerScoreReader } from "./guessRepository";
-import type { LatestPriceReader } from "./latestPriceStore";
+import type { GuessRepository, GuessRow, PlayerScore } from "./guessRepository";
+import type { LatestPriceLocalStore } from "./latestPriceStore";
 import type { RealtimeEvent, RealtimeEventSubscriber } from "./realtimeEvents";
 
 type ApiDependencies = {
-  guessRepository: GuessRepository;
-  playerGuessReader: PlayerGuessReader;
-  playerScoreReader: PlayerScoreReader;
+  guessRepository: Pick<GuessRepository, "insert" | "findPlayerGuesses" | "getPlayerScore">;
   realtimeEventSubscriber: RealtimeEventSubscriber;
-  latestPriceStore: LatestPriceReader;
+  latestPriceStore: LatestPriceLocalStore;
   guessDurationSeconds: number;
   createId?: () => string;
   now?: () => Date;
@@ -27,8 +25,6 @@ const registerGuessSchema = z.object({
 
 export function createApi({
   guessRepository,
-  playerGuessReader,
-  playerScoreReader,
   realtimeEventSubscriber,
   latestPriceStore,
   guessDurationSeconds,
@@ -119,7 +115,7 @@ export function createApi({
       return context.json({ error: "limit must be an integer between 1 and 100" }, 400);
     }
 
-    const guesses = await playerGuessReader.findPlayerGuesses(playerId, limit);
+    const guesses = await guessRepository.findPlayerGuesses(playerId, limit);
     return context.json(guesses.map(serializeGuess));
   });
 
@@ -129,7 +125,7 @@ export function createApi({
       return context.json({ error: "playerId must be a non-empty string" }, 400);
     }
 
-    const score = await playerScoreReader.getPlayerScore(playerId);
+    const score = await guessRepository.getPlayerScore(playerId);
     return context.json(serializeScore(score));
   });
 
@@ -140,12 +136,12 @@ export function createApi({
     }
 
     return streamSSE(context, async (stream) => {
-      let resolveDone = () => {};
+      let resolveDone = () => { };
       const done = new Promise<void>((resolve) => {
         resolveDone = resolve;
       });
       let cleanedUp = false;
-      let unsubscribe = () => {};
+      let unsubscribe = () => { };
       let writeQueue = Promise.resolve();
       let heartbeat: ReturnType<typeof setInterval> | undefined;
 

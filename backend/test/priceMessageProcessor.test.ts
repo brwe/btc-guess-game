@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { GuessResolutionRepository, ResolvedGuess } from "../src/guessRepository";
+import type { GuessRepository, ResolvedGuess } from "../src/guessRepository";
 import { PriceMessageProcessor } from "../src/priceMessageProcessor";
 import { InMemoryRealtimeEvents } from "../src/realtimeEvents";
 import { InMemoryLatestPriceStore } from "../src/latestPriceStore";
@@ -11,7 +11,7 @@ describe("PriceMessageProcessor", () => {
       { id: "guess-up", playerId: "player-1" },
       { id: "guess-down", playerId: "player-2" },
     ];
-    const repository: GuessResolutionRepository = {
+    const repository: Pick<GuessRepository, "resolveEligible"> = {
       async resolveEligible(price, observedAt) {
         calls.push({ price, observedAt });
         return resolvedGuesses;

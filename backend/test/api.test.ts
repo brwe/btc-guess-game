@@ -8,22 +8,25 @@ import { InMemoryRealtimeEvents } from "../src/realtimeEvents";
 const guessId = "6c3a2fc2-bcf5-4f5f-a755-21d91ff21973";
 const createdAt = new Date("2026-08-19T10:00:00.000Z");
 const latestPrice = 59_321.25;
+type ApiGuessRepository = Pick<GuessRepository, "insert" | "findPlayerGuesses" | "getPlayerScore">;
+
+function createApiGuessRepository(
+  overrides: Partial<ApiGuessRepository> = {},
+): ApiGuessRepository {
+  return {
+    async insert() {},
+    async findPlayerGuesses() { return []; },
+    async getPlayerScore() { return { wins: 0, losses: 0 }; },
+    ...overrides,
+  };
+}
 
 function createRequiredApiDependencies(
   latestPriceStore = createLatestPriceStore(),
 ) {
   return {
     latestPriceStore,
-    playerScoreReader: {
-      async getPlayerScore() {
-        return { wins: 0, losses: 0 };
-      },
-    },
-    playerGuessReader: {
-      async findPlayerGuesses() {
-        return [];
-      },
-    },
+    guessRepository: createApiGuessRepository(),
     realtimeEventSubscriber: new InMemoryRealtimeEvents(),
     guessDurationSeconds: 60,
   };
@@ -38,7 +41,7 @@ function createLatestPriceStore() {
 function createTestContext(existingRows: GuessRow[] = []) {
   const inserted: PendingGuess[] = [];
   const rows = [...existingRows];
-  const repository: GuessRepository = {
+  const repository = createApiGuessRepository({
     async insert(guess) {
       inserted.push(guess);
       rows.push({
@@ -53,21 +56,16 @@ function createTestContext(existingRows: GuessRow[] = []) {
         resolved_price: null,
       });
     },
-    async findById(id) {
-      return rows.find((row) => row.id === id) ?? null;
+    async findPlayerGuesses(playerId, limit) {
+      return rows
+        .filter((row) => row.player_id === playerId)
+        .sort((left, right) => right.resolve_after.getTime() - left.resolve_after.getTime())
+        .slice(0, limit);
     },
-  };
+  });
   const app = createApi({
     ...createRequiredApiDependencies(),
     guessRepository: repository,
-    playerGuessReader: {
-      async findPlayerGuesses(playerId, limit) {
-        return rows
-          .filter((row) => row.player_id === playerId)
-          .sort((left, right) => right.resolve_after.getTime() - left.resolve_after.getTime())
-          .slice(0, limit);
-      },
-    },
     createId: () => guessId,
     now: () => createdAt,
   });
@@ -110,7 +108,7 @@ describe("POST /api/guesses", () => {
     let nextGuessId = 0;
     const app = createApi({
       ...createRequiredApiDependencies(),
-      guessRepository: {
+      guessRepository: createApiGuessRepository({
         async insert(guess) {
           if (inserted.some((existing) => existing.playerId === guess.playerId)) {
             throw new PendingGuessConflictError();
@@ -118,10 +116,7 @@ describe("POST /api/guesses", () => {
 
           inserted.push(guess);
         },
-        async findById() {
-          return null;
-        },
-      },
+      }),
       createId: () => guessIds[nextGuessId++]!,
       now: () => createdAt,
     });
@@ -152,14 +147,11 @@ describe("POST /api/guesses", () => {
     const inserted: PendingGuess[] = [];
     const app = createApi({
       ...createRequiredApiDependencies(),
-      guessRepository: {
+      guessRepository: createApiGuessRepository({
         async insert(guess) {
           inserted.push(guess);
         },
-        async findById() {
-          return null;
-        },
-      },
+      }),
       now: () => createdAt,
     });
 
@@ -179,14 +171,11 @@ describe("POST /api/guesses", () => {
     const inserted: PendingGuess[] = [];
     const app = createApi({
       ...createRequiredApiDependencies(),
-      guessRepository: {
+      guessRepository: createApiGuessRepository({
         async insert(guess) {
           inserted.push(guess);
         },
-        async findById() {
-          return null;
-        },
-      },
+      }),
       createId: () => guessId,
       now: () => createdAt,
       guessDurationSeconds: 5,
@@ -260,10 +249,9 @@ describe("POST /api/guesses", () => {
     const inserted: PendingGuess[] = [];
     const app = createApi({
       ...createRequiredApiDependencies(latestPriceStore),
-      guessRepository: {
+      guessRepository: createApiGuessRepository({
         async insert(guess) { inserted.push(guess); },
-        async findById() { return null; },
-      },
+      }),
     });
 
     const response = await app.request("/api/guesses", {
@@ -282,10 +270,7 @@ describe("removed price endpoints", () => {
   test("does not expose GET /api/price", async () => {
     const app = createApi({
       ...createRequiredApiDependencies(),
-      guessRepository: {
-        async insert() {},
-        async findById() { return null; },
-      },
+      guessRepository: createApiGuessRepository(),
     });
 
     const response = await app.request("/api/price");
@@ -296,10 +281,7 @@ describe("removed price endpoints", () => {
   test("does not expose POST /api/price-messages", async () => {
     const app = createApi({
       ...createRequiredApiDependencies(),
-      guessRepository: {
-        async insert() {},
-        async findById() { return null; },
-      },
+      guessRepository: createApiGuessRepository(),
     });
 
     const response = await app.request("/api/price-messages", {
@@ -351,17 +333,13 @@ describe("GET /api/players/:playerId/guesses", () => {
     };
     const app = createApi({
       ...createRequiredApiDependencies(),
-      guessRepository: {
-        async insert() {},
-        async findById() { return resolvedGuess; },
-      },
-      playerGuessReader: {
+      guessRepository: createApiGuessRepository({
         async findPlayerGuesses(playerId, limit) {
           expect(playerId).toBe("player-1");
           expect(limit).toBe(1);
           return [resolvedGuess];
         },
-      },
+      }),
     });
 
     const response = await app.request("/api/players/player-1/guesses?limit=1");
@@ -395,16 +373,12 @@ describe("GET /api/players/:playerId/score", () => {
   test("returns the score calculated by the backend", async () => {
     const app = createApi({
       ...createRequiredApiDependencies(),
-      guessRepository: {
-        async insert() {},
-        async findById() { return null; },
-      },
-      playerScoreReader: {
+      guessRepository: createApiGuessRepository({
         async getPlayerScore(playerId) {
           expect(playerId).toBe("player-1");
           return { wins: 4, losses: 2 };
         },
-      },
+      }),
     });
 
     const response = await app.request("/api/players/player-1/score");

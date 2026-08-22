@@ -3,7 +3,7 @@ export type LatestPrice = {
   observedAt: Date;
 };
 
-export interface LatestPriceReader {
+export interface LatestPriceLocalStore {
   get(): LatestPrice | null;
 }
 
@@ -11,7 +11,7 @@ export interface LatestPriceWriter {
   set(latestPrice: LatestPrice): void;
 }
 
-export class InMemoryLatestPriceStore implements LatestPriceReader, LatestPriceWriter {
+export class InMemoryLatestPriceStore implements LatestPriceLocalStore, LatestPriceWriter {
   private latestPrice: LatestPrice | null = null;
 
   get() {

@@ -50,22 +50,12 @@ const pendingGuessConstraint = "guesses_one_pending_per_player_idx";
 
 export interface GuessRepository {
   insert(guess: PendingGuess): Promise<void>;
-  findById(guessId: string): Promise<GuessRow | null>;
-}
-
-export interface GuessResolutionRepository {
   resolveEligible(price: number, observedAt: Date): Promise<ResolvedGuess[]>;
-}
-
-export interface PlayerScoreReader {
   getPlayerScore(playerId: string): Promise<PlayerScore>;
-}
-
-export interface PlayerGuessReader {
   findPlayerGuesses(playerId: string, limit: number): Promise<GuessRow[]>;
 }
 
-export class PostgresGuessRepository implements GuessRepository, GuessResolutionRepository, PlayerScoreReader, PlayerGuessReader {
+export class PostgresGuessRepository implements GuessRepository {
   constructor(private readonly sql: postgres.Sql) { }
 
   async initialize({ reset = false }: { reset?: boolean } = {}) {
@@ -128,17 +118,6 @@ export class PostgresGuessRepository implements GuessRepository, GuessResolution
 
       throw error;
     }
-  }
-
-  async findById(guessId: string) {
-    const rows = await this.sql<GuessRow[]>`
-      SELECT id, player_id, direction, entry_price, status, created_at, resolve_after,
-             resolved_at, resolved_price
-      FROM guesses
-      WHERE id = ${guessId}
-      LIMIT 1
-    `;
-    return rows[0] ?? null;
   }
 
   async findPlayerGuesses(playerId: string, limit: number) {

@@ -57,8 +57,6 @@ try {
 
 const app = createApi({
   guessRepository,
-  playerGuessReader: guessRepository,
-  playerScoreReader: guessRepository,
   realtimeEventSubscriber: realtimeEvents,
   latestPriceStore,
   guessDurationSeconds,
