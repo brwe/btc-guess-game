@@ -93,20 +93,6 @@ function App() {
     const playerId = encodeURIComponent(getPlayerId());
     const events = new EventSource(`/api/players/${playerId}/events`);
 
-    async function loadPrice() {
-      try {
-        const price = await getJson<PriceResponse>("/api/price");
-        if (active) {
-          setLatestPrice(price);
-          setError(null);
-        }
-      } catch (requestError) {
-        if (active) {
-          setError(requestError instanceof Error ? requestError.message : String(requestError));
-        }
-      }
-    }
-
     async function loadPlayerData() {
       try {
         const [backendScore, guess] = await Promise.all([
@@ -157,19 +143,14 @@ function App() {
       }
     }
 
-    function reloadSnapshots() {
-      void loadPrice();
-      void loadPlayerData();
-    }
-
-    events.addEventListener("connected", reloadSnapshots);
+    events.addEventListener("connected", () => void loadPlayerData());
     events.addEventListener("price-updated", handlePriceUpdated);
     events.addEventListener("guess-resolved", () => void loadPlayerData());
     events.onerror = () => {
       if (active) setError("live updates disconnected; reconnecting...");
     };
 
-    reloadSnapshots();
+    void loadPlayerData();
     return () => {
       active = false;
       events.close();

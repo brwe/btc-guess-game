@@ -63,20 +63,6 @@ export function createApi({
     return context.json({ message: "hello world from the backend" });
   });
 
-  app.get("/api/price", (context) => {
-    const latestPrice = latestPriceStore.get();
-
-    if (!latestPrice) {
-      return context.json({ error: "price not available" }, 503);
-    }
-
-    return context.json({
-      pair: "BTC/USD" as const,
-      price: latestPrice.price,
-      observedAt: latestPrice.observedAt.toISOString(),
-    });
-  });
-
   app.post(
     "/api/guesses",
     zValidator("json", registerGuessSchema, (result, context) => {

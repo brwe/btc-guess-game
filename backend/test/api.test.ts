@@ -278,15 +278,10 @@ describe("POST /api/guesses", () => {
   });
 });
 
-describe("GET /api/price", () => {
-  test("returns the latest stored BTC/USD price", async () => {
-    const latestPriceStore = new InMemoryLatestPriceStore();
-    latestPriceStore.set({
-      price: 62_345.67,
-      observedAt: new Date("2026-08-21T12:00:00.000Z"),
-    });
+describe("removed price endpoints", () => {
+  test("does not expose GET /api/price", async () => {
     const app = createApi({
-      ...createRequiredApiDependencies(latestPriceStore),
+      ...createRequiredApiDependencies(),
       guessRepository: {
         async insert() {},
         async findById() { return null; },
@@ -295,32 +290,9 @@ describe("GET /api/price", () => {
 
     const response = await app.request("/api/price");
 
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
-      pair: "BTC/USD",
-      price: 62_345.67,
-      observedAt: "2026-08-21T12:00:00.000Z",
-    });
+    expect(response.status).toBe(404);
   });
 
-  test("returns 503 before a price has been received", async () => {
-    const latestPriceStore = new InMemoryLatestPriceStore();
-    const app = createApi({
-      ...createRequiredApiDependencies(latestPriceStore),
-      guessRepository: {
-        async insert() {},
-        async findById() { return null; },
-      },
-    });
-
-    const response = await app.request("/api/price");
-
-    expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({ error: "price not available" });
-  });
-});
-
-describe("removed price injection endpoint", () => {
   test("does not expose POST /api/price-messages", async () => {
     const app = createApi({
       ...createRequiredApiDependencies(),
