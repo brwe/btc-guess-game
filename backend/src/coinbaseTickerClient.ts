@@ -10,6 +10,7 @@ type CoinbaseTickerClientOptions = {
   url?: string;
   productId?: string;
   reconnectDelayMs?: number;
+  startupTimeoutMs?: number;
   createWebSocket?: (url: string) => WebSocket;
   logger?: Logger;
 };
@@ -21,10 +22,17 @@ type CoinbaseTickerMessage = {
   time: string;
 };
 
+type StartupState = {
+  resolve: () => void;
+  reject: (error: Error) => void;
+  timeout: ReturnType<typeof setTimeout>;
+};
+
 export class CoinbaseTickerClient {
   private readonly url: string;
   private readonly productId: string;
   private readonly reconnectDelayMs: number;
+  private readonly startupTimeoutMs: number;
   private readonly createWebSocket: (url: string) => WebSocket;
   private readonly logger: Logger;
   private socket: WebSocket | null = null;
@@ -32,6 +40,8 @@ export class CoinbaseTickerClient {
   private processing = Promise.resolve();
   private lastObservedAtMs: number | null = null;
   private started = false;
+  private startPromise: Promise<void> | null = null;
+  private startupState: StartupState | null = null;
 
   constructor(
     private readonly priceMessageHandler: PriceMessageHandler,
@@ -40,18 +50,36 @@ export class CoinbaseTickerClient {
     this.url = options.url ?? "wss://ws-feed.exchange.coinbase.com";
     this.productId = options.productId ?? "BTC-USD";
     this.reconnectDelayMs = options.reconnectDelayMs ?? 1_000;
+    this.startupTimeoutMs = options.startupTimeoutMs ?? 10_000;
     this.createWebSocket = options.createWebSocket ?? ((url) => new WebSocket(url));
     this.logger = options.logger ?? console;
   }
 
-  start() {
-    if (this.started) return;
+  start(): Promise<void> {
+    if (this.started) return this.startPromise ?? Promise.resolve();
     this.started = true;
-    this.connect();
+    this.startPromise = new Promise<void>((resolve, reject) => {
+      this.startupState = {
+        resolve,
+        reject,
+        timeout: setTimeout(() => {
+          this.failStartup(new Error(
+            `Coinbase WebSocket did not confirm the subscription within ${this.startupTimeoutMs}ms`,
+          ));
+        }, this.startupTimeoutMs),
+      };
+      this.connect();
+    });
+    return this.startPromise;
   }
 
   stop() {
+    if (this.startupState) {
+      this.failStartup(new Error("Coinbase WebSocket stopped during startup"));
+      return;
+    }
     this.started = false;
+    this.startPromise = null;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -68,31 +96,61 @@ export class CoinbaseTickerClient {
       socket = this.createWebSocket(this.url);
     } catch (error) {
       this.logger.error("[coinbase] connection failed", error);
-      this.scheduleReconnect();
+      if (!this.failStartup(toError(error, "Coinbase WebSocket connection failed"))) {
+        this.scheduleReconnect();
+      }
       return;
     }
 
     this.socket = socket;
     socket.addEventListener("open", () => {
-      socket.send(JSON.stringify({
-        type: "subscribe",
-        product_ids: [this.productId],
-        channels: ["ticker_batch"],
-      }));
-      this.logger.info(`[coinbase] subscribed to ticker_batch ${this.productId}`);
+      try {
+        socket.send(JSON.stringify({
+          type: "subscribe",
+          product_ids: [this.productId],
+          channels: ["ticker_batch"],
+        }));
+        this.logger.info(`[coinbase] requested ticker_batch ${this.productId} subscription`);
+      } catch (error) {
+        this.logger.error("[coinbase] subscription request failed", error);
+        if (!this.failStartup(toError(error, "Coinbase subscription request failed"))) {
+          if (this.socket === socket) this.socket = null;
+          socket.close();
+          this.scheduleReconnect();
+        }
+      }
     });
 
     socket.addEventListener("message", (event) => {
+      const controlMessage = parseControlMessage(event.data, this.productId);
+      if (controlMessage === "subscribed") {
+        this.logger.info(`[coinbase] subscribed to ticker_batch ${this.productId}`);
+        this.completeStartup();
+        return;
+      }
+      if (controlMessage instanceof Error) {
+        this.logger.error("[coinbase] subscription rejected", controlMessage);
+        if (!this.failStartup(controlMessage)) {
+          if (this.socket === socket) this.socket = null;
+          socket.close();
+          this.scheduleReconnect();
+        }
+        return;
+      }
       this.handleMessage(event.data);
     });
 
     socket.addEventListener("error", () => {
       this.logger.warn("[coinbase] websocket error");
+      this.failStartup(new Error("Coinbase WebSocket emitted an error during startup"));
     });
 
     socket.addEventListener("close", () => {
       if (this.socket === socket) this.socket = null;
       if (!this.started) return;
+      if (this.failStartup(new Error(
+        "Coinbase WebSocket closed before confirming the subscription",
+      ))) return;
       this.logger.warn(`[coinbase] disconnected; reconnecting in ${this.reconnectDelayMs}ms`);
       this.scheduleReconnect();
     });
@@ -124,6 +182,57 @@ export class CoinbaseTickerClient {
       this.connect();
     }, this.reconnectDelayMs);
   }
+
+  private completeStartup() {
+    const startupState = this.startupState;
+    if (!startupState) return;
+    clearTimeout(startupState.timeout);
+    this.startupState = null;
+    startupState.resolve();
+  }
+
+  private failStartup(error: Error) {
+    const startupState = this.startupState;
+    if (!startupState) return false;
+
+    clearTimeout(startupState.timeout);
+    this.startupState = null;
+    this.started = false;
+    this.startPromise = null;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    const socket = this.socket;
+    this.socket = null;
+    socket?.close();
+    startupState.reject(error);
+    return true;
+  }
+}
+
+function parseControlMessage(data: unknown, productId: string): "subscribed" | Error | null {
+  if (typeof data !== "string") return null;
+
+  let message: unknown;
+  try {
+    message = JSON.parse(data);
+  } catch {
+    return null;
+  }
+  if (!isRecord(message)) return null;
+
+  if (message.type === "error") {
+    const detail = typeof message.message === "string" ? `: ${message.message}` : "";
+    return new Error(`Coinbase rejected the subscription${detail}`);
+  }
+  if (message.type !== "subscriptions" || !Array.isArray(message.channels)) return null;
+
+  const subscribed = message.channels.some((channel) => isRecord(channel)
+    && channel.name === "ticker_batch"
+    && Array.isArray(channel.product_ids)
+    && channel.product_ids.includes(productId));
+  return subscribed ? "subscribed" : null;
 }
 
 function parseTickerMessage(data: unknown, productId: string): CoinbaseTickerMessage | null {
@@ -153,4 +262,8 @@ function parseTickerMessage(data: unknown, productId: string): CoinbaseTickerMes
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function toError(error: unknown, fallbackMessage: string) {
+  return error instanceof Error ? error : new Error(fallbackMessage);
 }

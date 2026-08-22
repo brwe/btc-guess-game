@@ -160,3 +160,10 @@ bun run destroy
 ```
 
 The RDS instance is not publicly accessible. The ECS service can connect on the PostgreSQL port, while the public Fargate address provides outbound access to Coinbase without a NAT gateway.
+
+TODOS:
+
+- make the app work:
+  - concurrency issues
+  - migration handling
+  -

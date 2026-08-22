@@ -36,6 +36,13 @@ const coinbaseTickerClient = new CoinbaseTickerClient(priceMessageProcessor, {
 
 await guessRepository.initialize({ reset: resetDatabaseOnStart });
 
+try {
+  await coinbaseTickerClient.start();
+} catch (error) {
+  await sql.end();
+  throw error;
+}
+
 const app = createApi({
   guessRepository,
   latestPriceStore,
@@ -44,7 +51,6 @@ const app = createApi({
 });
 
 const server = Bun.serve({ port, hostname: host, fetch: app.fetch });
-coinbaseTickerClient.start();
 
 console.log(`Backend listening on http://${host}:${port}`);
 
