@@ -42,7 +42,6 @@ type Score = {
 };
 
 const PLAYER_ID_KEY = "btc-game-player-id";
-const STALE_EVENT_STREAM_MS = 15_000;
 
 const usdFormatter = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -92,9 +91,7 @@ function App() {
   useEffect(() => {
     let active = true;
     const playerId = encodeURIComponent(getPlayerId());
-    const eventsUrl = `/api/players/${playerId}/events`;
-    let events: EventSource | null = null;
-    let lastEventAt = Date.now();
+    const events = new EventSource(`/api/players/${playerId}/events`);
 
     async function loadPlayerData() {
       try {
@@ -146,55 +143,17 @@ function App() {
       }
     }
 
-    function connectEvents() {
-      events?.close();
+    events.addEventListener("connected", () => void loadPlayerData());
+    events.addEventListener("price-updated", handlePriceUpdated);
+    events.addEventListener("guess-resolved", () => void loadPlayerData());
+    events.onerror = () => {
+      if (active) setError("live updates disconnected; reconnecting...");
+    };
 
-      const nextEvents = new EventSource(eventsUrl);
-      events = nextEvents;
-      lastEventAt = Date.now();
-      const receiveCurrentEvent = () => {
-        if (!active || events !== nextEvents) return false;
-        lastEventAt = Date.now();
-        return true;
-      };
-
-      nextEvents.addEventListener("connected", () => {
-        if (receiveCurrentEvent()) void loadPlayerData();
-      });
-      nextEvents.addEventListener("heartbeat", receiveCurrentEvent);
-      nextEvents.addEventListener("price-updated", (event) => {
-        if (receiveCurrentEvent()) handlePriceUpdated(event);
-      });
-      nextEvents.addEventListener("guess-resolved", () => {
-        if (receiveCurrentEvent()) void loadPlayerData();
-      });
-      nextEvents.onerror = () => {
-        if (active && events === nextEvents) {
-          setError("live updates disconnected; reconnecting...");
-        }
-      };
-    }
-
-    function reconnectStaleVisibleStream() {
-      if (document.visibilityState === "visible"
-        && Date.now() - lastEventAt > STALE_EVENT_STREAM_MS) {
-        connectEvents();
-      }
-    }
-
-    function reconnectOnline() {
-      if (active) connectEvents();
-    }
-
-    connectEvents();
     void loadPlayerData();
-    document.addEventListener("visibilitychange", reconnectStaleVisibleStream);
-    window.addEventListener("online", reconnectOnline);
     return () => {
       active = false;
-      events?.close();
-      document.removeEventListener("visibilitychange", reconnectStaleVisibleStream);
-      window.removeEventListener("online", reconnectOnline);
+      events.close();
     };
   }, []);
 
