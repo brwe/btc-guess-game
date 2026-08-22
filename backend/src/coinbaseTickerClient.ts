@@ -119,9 +119,7 @@ export class CoinbaseTickerClient {
       } catch (error) {
         this.logger.error("[coinbase] subscription request failed", error);
         if (!this.failStartup(toError(error, "Coinbase subscription request failed"))) {
-          if (this.socket === socket) this.socket = null;
-          socket.close();
-          this.scheduleReconnect();
+          this.disconnectAndReconnect(socket);
         }
       }
     });
@@ -136,9 +134,7 @@ export class CoinbaseTickerClient {
       if (controlMessage instanceof Error) {
         this.logger.error("[coinbase] subscription rejected", controlMessage);
         if (!this.failStartup(controlMessage)) {
-          if (this.socket === socket) this.socket = null;
-          socket.close();
-          this.scheduleReconnect();
+          this.disconnectAndReconnect(socket);
         }
         return;
       }
@@ -186,6 +182,12 @@ export class CoinbaseTickerClient {
       this.reconnectTimer = null;
       this.connect();
     }, this.reconnectDelayMs);
+  }
+
+  private disconnectAndReconnect(socket: WebSocket) {
+    if (this.socket === socket) this.socket = null;
+    socket.close();
+    this.scheduleReconnect();
   }
 
   private completeStartup() {
