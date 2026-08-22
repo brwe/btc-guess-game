@@ -1,4 +1,4 @@
 node_modules/
-cdk.out/
+/infra/cdk.out*/
 cdk.context.json
 dist/
