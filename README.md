@@ -166,4 +166,7 @@ TODOS:
 - make the app work:
   - concurrency issues
   - migration handling
-  -
+  - deployment 
+  - design
+  - documentation
+  - code review

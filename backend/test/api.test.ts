@@ -140,7 +140,7 @@ describe("POST /api/guesses", () => {
     const response = await app.request("/api/guesses", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ direction: "up", entryPrice: 59_321.25 }),
+      body: JSON.stringify({ direction: "up", entryPrice: 59_321.25, playerId: "player-1" }),
     });
     const body = await response.json() as { guessId: string };
 
@@ -169,7 +169,7 @@ describe("POST /api/guesses", () => {
     const response = await app.request("/api/guesses", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ direction: "up", entryPrice: 59_321.25 }),
+      body: JSON.stringify({ direction: "up", entryPrice: 59_321.25, playerId: "player-1" }),
     });
 
     expect(response.status).toBe(201);
@@ -182,8 +182,11 @@ describe("POST /api/guesses", () => {
   });
 
   test.each([
-    [{ direction: "sideways", entryPrice: 59_321.25 }, "direction must be 'up' or 'down'"],
-    [{ direction: "down", entryPrice: 0 }, "entryPrice must be a positive number"],
+    [{ direction: "sideways", entryPrice: 59_321.25, playerId: "player-1" }, "direction must be 'up' or 'down'"],
+    [{ direction: "down", entryPrice: 0, playerId: "player-1" }, "entryPrice must be a positive number"],
+    [{ direction: "down", entryPrice: 59_321.25 }, "playerId must be a non-empty string"],
+    [{ direction: "down", entryPrice: 59_321.25, playerId: "   " }, "playerId must be a non-empty string"],
+    [{ direction: "down", entryPrice: 59_321.25, playerId: 123 }, "playerId must be a non-empty string"],
   ])("rejects invalid input", async (body, error) => {
     const { app, inserted } = createTestContext();
     const response = await app.request("/api/guesses", {
@@ -290,14 +293,14 @@ describe("GET /api/guesses/:id", () => {
     await app.request("/api/guesses", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ direction: "down", entryPrice: 60_000 }),
+      body: JSON.stringify({ direction: "down", entryPrice: 60_000, playerId: "player-1" }),
     });
 
     const response = await app.request(`/api/guesses/${guessId}`);
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       guessId,
-      playerId: null,
+      playerId: "player-1",
       direction: "down",
       entryPrice: 60_000,
       status: "pending",

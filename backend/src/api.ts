@@ -19,7 +19,7 @@ type ApiDependencies = {
 const registerGuessSchema = z.object({
   direction: z.enum(["up", "down"]),
   entryPrice: z.number().positive(),
-  playerId: z.unknown().optional(),
+  playerId: z.string().trim().min(1),
 });
 
 export function createApi({
@@ -95,7 +95,9 @@ export function createApi({
       const invalidField = result.error.issues[0]?.path[0];
       const error = invalidField === "entryPrice"
         ? "entryPrice must be a positive number"
-        : "direction must be 'up' or 'down'";
+        : invalidField === "playerId"
+          ? "playerId must be a non-empty string"
+          : "direction must be 'up' or 'down'";
 
       return context.json({ error }, 400);
     }),
@@ -104,13 +106,10 @@ export function createApi({
       const guessId = createId();
       const createdAt = now();
       const resolveAfter = new Date(createdAt.getTime() + guessDurationSeconds * 1_000);
-      const playerId = typeof body.playerId === "string" && body.playerId.trim().length > 0
-        ? body.playerId
-        : null;
 
       await guessRepository.insert({
         id: guessId,
-        playerId,
+        playerId: body.playerId,
         direction: body.direction,
         entryPrice: body.entryPrice,
         createdAt,
