@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
 import "./styles.css";
 
@@ -79,7 +79,8 @@ async function getLatestGuess() {
   return guesses[0] ?? null;
 }
 
-function App() {
+export function App() {
+  const playerDataGeneration = useRef(0);
   const [latestPrice, setLatestPrice] = useState<PriceResponse | null>(null);
   const [activeGuess, setActiveGuess] = useState<ActiveGuess | null>(null);
   const [lastResolvedGuess, setLastResolvedGuess] = useState<ResolvedGuess | null>(null);
@@ -94,12 +95,13 @@ function App() {
     const events = new EventSource(`/api/players/${playerId}/events`);
 
     async function loadPlayerData() {
+      const requestGeneration = ++playerDataGeneration.current;
       try {
         const [backendScore, guess] = await Promise.all([
           getPlayerScore(),
           getLatestGuess(),
         ]);
-        if (!active) return;
+        if (!active || requestGeneration !== playerDataGeneration.current) return;
 
         setScore(backendScore);
         if (guess?.status === "pending") {
@@ -125,7 +127,7 @@ function App() {
         }
         setError(null);
       } catch (requestError) {
-        if (active) {
+        if (active && requestGeneration === playerDataGeneration.current) {
           setError(requestError instanceof Error ? requestError.message : String(requestError));
         }
       }
@@ -201,6 +203,7 @@ function App() {
         resolveAfter: result.resolveAfter,
         entryPrice: result.entryPrice,
       };
+      playerDataGeneration.current++;
       setActiveGuess(guess);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : String(requestError));
@@ -276,8 +279,11 @@ function App() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-);
+const rootElement = document.getElementById("root");
+if (rootElement) {
+  ReactDOM.createRoot(rootElement).render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>,
+  );
+}
