@@ -266,15 +266,17 @@ export function App() {
       {activeGuess ? (
         <section className="guess-card pending" aria-live="polite">
           <div className="guess-card-header">
-            <p className="guess-card-title">Your guess</p>
+            <div className="guess-choice-block">
+              <p className="guess-card-title">Your guess</p>
+              <strong className={`direction ${activeGuess.direction}`}>
+                {activeGuess.direction === "up" ? "↑ Higher" : "↓ Lower"}
+              </strong>
+            </div>
             <div className="current-move-block">
               <span className="current-move-label">Current move</span>
               <strong className={`current-move ${currentMoveTone}`}>{currentMoveLabel}</strong>
             </div>
           </div>
-          <strong className={`direction ${activeGuess.direction}`}>
-            {activeGuess.direction === "up" ? "↑ Higher" : "↓ Lower"}
-          </strong>
           <dl>
             <div>
               <dt>Entry price</dt>
@@ -289,15 +291,17 @@ export function App() {
       ) : lastResolvedGuess ? (
         <section className={`guess-card resolved ${lastResolvedGuess.result}`}>
           <div className="guess-card-header">
-            <p className="guess-card-title">Your guess</p>
+            <div className="guess-choice-block">
+              <p className="guess-card-title">Your guess</p>
+              <strong className={`direction ${lastResolvedGuess.direction}`}>
+                {lastResolvedGuess.direction === "up" ? "↑ Higher" : "↓ Lower"}
+              </strong>
+            </div>
             <div className="current-move-block">
               <span className="current-move-label">Final move</span>
               <strong className={`current-move ${finalMoveTone}`}>{finalMoveLabel}</strong>
             </div>
           </div>
-          <strong className={`direction ${lastResolvedGuess.direction}`}>
-            {lastResolvedGuess.direction === "up" ? "↑ Higher" : "↓ Lower"}
-          </strong>
           <p className="round-result">
             {lastResolvedGuess.result === "won" ? "Won" : "Lost"}
           </p>
