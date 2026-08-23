@@ -58,11 +58,11 @@ bun run destroy
 
 The application uses three communication mechanisms, each for a distinct purpose:
 
-| Abbreviation | Mechanism          | Direction          | Purpose                                               |
-| ------------ | ------------------ | ------------------ | ----------------------------------------------------- |
+| Abbreviation | Mechanism          | Direction                       | Purpose                                      |
+| ------------ | ------------------ | ------------------------------- | -------------------------------------------- |
 | `WS`         | WebSocket          | Coinbase → Backend and frontend | Independent BTC/USD price streams            |
 | `SSE`        | Server-Sent Events | Backend → Frontend              | Guess-resolution notifications only          |
-| `REST`       | REST API over HTTP | Frontend ↔ Backend               | Submit commands and load authoritative state |
+| `REST`       | REST API over HTTP | Frontend ↔ Backend              | Submit commands and load authoritative state |
 
 ### Price flow
 
@@ -72,7 +72,7 @@ Frontend                    Backend                     Coinbase
    │                           │  BTC/USD price [WS]       │
    │                           │◄──────────────────────────┤
    │  BTC/USD price [WS]       │                           │
-   │◄────────────────────────────────────────────────────────┤
+   │◄──────────────────────────────────────────────────────┤
 ```
 Both the frontend and backend independently subscribe to the Coinbase WebSocket ticker. The frontend connection is used only to display the live price. The backend connection remains authoritative for entry prices and guess resolution. This avoids relaying every price update through the application's AWS infrastructure.
 
@@ -104,11 +104,11 @@ Browser                     Backend                    PostgreSQL               
    │◄──────────────────────────┤                           │                           │
 ```
 
-The frontend submits a new guess to the backend via REST.
+The frontend submits a new guess to the backend via REST. It also establishes an SSE connection to receive a message when the guess is resolved.
 
 The backend resolves guesses as follows: Whenever a new price update arrives, it checks the database for guesses eligible for resolution, meaning it checks if 60s have passed since the guess was received. If a guess can be resolved, the backend resolves it, stores the guess update and sends a message to the frontend. The frontend then fetches the user’s updated score and latest guess.
 
-The frontend opens the SSE connection only while it has a pending guess. It does not poll and is not involved in the logic for resolving guesses.
+The frontend opens the SSE connection only while it has a pending guess and closes it after. It does not poll and is not involved in the logic for resolving guesses.
 
 
 ### AWS request path
