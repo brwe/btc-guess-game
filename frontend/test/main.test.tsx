@@ -102,10 +102,20 @@ describe("App player-data synchronization", () => {
       }]));
     });
 
-    const upButton = await view.findByRole("button", { name: "Up" });
+    const upButton = await view.findByRole("button", { name: "↑ Higher" });
     await waitFor(() => expect((upButton as HTMLButtonElement).disabled).toBe(false));
     await act(async () => fireEvent.click(upButton));
-    await view.findByText("Current guess");
+    await view.findByText("Your guess");
+
+    act(() => {
+      events.emit("price-updated", {
+        pair: "BTC/USD",
+        price: 61_012.34,
+        observedAt: "2026-08-22T18:00:01.000Z",
+      });
+    });
+    expect(await view.findByText("↑ $12.34")).not.toBeNull();
+    expect(view.queryByText("You can guess again after this round settles.")).not.toBeNull();
 
     await act(async () => {
       staleScore.resolve(jsonResponse({ wins: 1, losses: 0, score: 1 }));
@@ -121,7 +131,7 @@ describe("App player-data synchronization", () => {
     });
 
     await waitFor(() => {
-      expect(view.queryByText("Current guess")).not.toBeNull();
+      expect(view.queryByText("Your guess")).not.toBeNull();
       expect((upButton as HTMLButtonElement).disabled).toBe(true);
     });
   });

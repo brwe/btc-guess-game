@@ -213,67 +213,115 @@ export function App() {
   }
 
   const waiting = submitting || activeGuess !== null;
+  const currentMove = activeGuess && latestPrice
+    ? latestPrice.price - activeGuess.entryPrice
+    : null;
+  const currentMoveLabel = currentMove === null
+    ? "Waiting for price"
+    : currentMove === 0
+      ? usdFormatter.format(0)
+      : `${currentMove > 0 ? "↑" : "↓"} ${usdFormatter.format(Math.abs(currentMove))}`;
+  const currentMoveTone = currentMove === null || currentMove === 0
+    ? ""
+    : currentMove > 0 ? "movement-up" : "movement-down";
+  const finalMove = lastResolvedGuess
+    ? lastResolvedGuess.resolvedPrice - lastResolvedGuess.entryPrice
+    : null;
+  const finalMoveLabel = finalMove === null
+    ? null
+    : finalMove === 0
+      ? usdFormatter.format(0)
+      : `${finalMove > 0 ? "↑" : "↓"} ${usdFormatter.format(Math.abs(finalMove))}`;
+  const finalMoveTone = finalMove === null || finalMove === 0
+    ? ""
+    : finalMove > 0
+      ? "movement-up"
+      : "movement-down";
+  const countdownLabel = secondsRemaining > 0
+    ? `${secondsRemaining}s remaining`
+    : "Awaiting settlement";
+
   return (
     <main className="game">
-      <p className="label">BTC / USD</p>
-      <h1>{latestPrice ? `$${latestPrice.price.toLocaleString("en-US")}` : "Waiting for price"}</h1>
+      <header className="price-header">
+        <div>
+          <p className="label">BTC / USD</p>
+          <h1>{latestPrice ? usdFormatter.format(latestPrice.price) : "Waiting for price"}</h1>
+        </div>
+      </header>
 
+      <h2 className="question">Where will Bitcoin be when this round settles?</h2>
       <div className="actions">
         <button className="up" disabled={waiting || !latestPrice} onClick={() => registerGuess("up")}>
-          Up
+          ↑ Higher
         </button>
         <button className="down" disabled={waiting || !latestPrice} onClick={() => registerGuess("down")}>
-          Down
+          ↓ Lower
         </button>
       </div>
+      <p className="action-help">
+        {activeGuess ? "You can guess again after this round settles." : null}
+      </p>
 
       {activeGuess ? (
         <section className="guess-card pending" aria-live="polite">
-          <p className="guess-card-title">Current guess</p>
+          <div className="guess-card-header">
+            <p className="guess-card-title">Your guess</p>
+            <div className="current-move-block">
+              <span className="current-move-label">Current move</span>
+              <strong className={`current-move ${currentMoveTone}`}>{currentMoveLabel}</strong>
+            </div>
+          </div>
           <strong className={`direction ${activeGuess.direction}`}>
-            {activeGuess.direction === "up" ? "Up" : "Down"}
+            {activeGuess.direction === "up" ? "↑ Higher" : "↓ Lower"}
           </strong>
           <dl>
             <div>
-              <dt>Guessed at</dt>
+              <dt>Entry price</dt>
               <dd>{usdFormatter.format(activeGuess.entryPrice)}</dd>
+            </div>
+            <div>
+              <dt>Time remaining</dt>
+              <dd>{countdownLabel}</dd>
             </div>
           </dl>
         </section>
       ) : lastResolvedGuess ? (
         <section className={`guess-card resolved ${lastResolvedGuess.result}`}>
-          <p className="guess-card-title">Last result</p>
-          <strong className="result">{lastResolvedGuess.result === "won" ? "Won" : "Lost"}</strong>
-          <p className="resolved-direction">
-            Guessed {lastResolvedGuess.direction === "up" ? "up" : "down"}
+          <div className="guess-card-header">
+            <p className="guess-card-title">Your guess</p>
+            <div className="current-move-block">
+              <span className="current-move-label">Final move</span>
+              <strong className={`current-move ${finalMoveTone}`}>{finalMoveLabel}</strong>
+            </div>
+          </div>
+          <strong className={`direction ${lastResolvedGuess.direction}`}>
+            {lastResolvedGuess.direction === "up" ? "↑ Higher" : "↓ Lower"}
+          </strong>
+          <p className="round-result">
+            {lastResolvedGuess.result === "won" ? "Won" : "Lost"}
           </p>
           <dl>
             <div>
-              <dt>Guessed at</dt>
+              <dt>Entry price</dt>
               <dd>{usdFormatter.format(lastResolvedGuess.entryPrice)}</dd>
             </div>
             <div>
-              <dt>Resolved at</dt>
+              <dt>Settlement price</dt>
               <dd>{usdFormatter.format(lastResolvedGuess.resolvedPrice)}</dd>
             </div>
           </dl>
         </section>
       ) : null}
 
-      <div className="score" aria-label="Score">
-        <span className="score-label">Score</span>
-        <strong>{score.score}</strong>
-        <span>{score.wins} wins</span>
-        <span>{score.losses} losses</span>
-      </div>
+      <section className="score" aria-label="Score">
+        <div>
+          <span className="score-label">Score</span>
+          <strong>{score.score >= 0 ? `+${score.score}` : score.score}</strong>
+        </div>
+        <span className="score-math">{score.wins} wins − {score.losses} losses</span>
+      </section>
 
-      <p className="status">
-        {activeGuess && secondsRemaining > 0
-          ? `${secondsRemaining} second${secondsRemaining === 1 ? "" : "s"} remaining`
-          : activeGuess
-            ? "Awaiting settlement..."
-            : null}
-      </p>
       {error ? <p className="error">{error}</p> : null}
     </main>
   );
