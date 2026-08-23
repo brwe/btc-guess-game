@@ -22,7 +22,6 @@ type GuessResponse = {
 type ActiveGuess = {
   guessId: string;
   direction: Direction;
-  remainingSeconds: number;
   entryPrice: number;
 };
 
@@ -99,14 +98,15 @@ export function App() {
 
       setScore(backendScore);
       if (guess?.status === "pending") {
+        setSecondsRemaining(guess.remainingSeconds);
         setActiveGuess({
           guessId: guess.guessId,
           direction: guess.direction,
-          remainingSeconds: guess.remainingSeconds,
           entryPrice: guess.entryPrice,
         });
         setLastResolvedGuess(null);
       } else if (guess && guess.resolvedPrice !== null && guess.result !== null) {
+        setSecondsRemaining(0);
         setActiveGuess(null);
         setLastResolvedGuess({
           guessId: guess.guessId,
@@ -116,6 +116,7 @@ export function App() {
           result: guess.result,
         });
       } else {
+        setSecondsRemaining(0);
         setActiveGuess(null);
         setLastResolvedGuess(null);
       }
@@ -142,28 +143,32 @@ export function App() {
   }), []);
 
   useEffect(() => {
-    if (!activeGuess) return;
-    const playerId = encodeURIComponent(getPlayerId());
-    const events = new EventSource(`/api/players/${playerId}/events`);
-    events.addEventListener("connected", () => void loadPlayerData());
-    events.addEventListener("guess-resolved", () => void loadPlayerData());
-    events.onerror = () => {
-      setError("resolution updates disconnected; reconnecting...");
-    };
-    return () => events.close();
-  }, [activeGuess?.guessId, loadPlayerData]);
-
-  useEffect(() => {
     if (!activeGuess) {
       setSecondsRemaining(0);
       return;
     }
-    setSecondsRemaining(activeGuess.remainingSeconds);
     const interval = window.setInterval(() => {
       setSecondsRemaining((remaining) => Math.max(0, remaining - 1));
     }, 1_000);
     return () => window.clearInterval(interval);
-  }, [activeGuess]);
+  }, [activeGuess?.guessId]);
+
+  useEffect(() => {
+    if (!activeGuess || secondsRemaining > 0) return;
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const checkResolution = async () => {
+      await loadPlayerData();
+      if (!cancelled) retryTimer = setTimeout(checkResolution, 2_000);
+    };
+
+    void checkResolution();
+    return () => {
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
+  }, [activeGuess?.guessId, secondsRemaining === 0, loadPlayerData]);
 
   async function registerGuess(direction: Direction) {
     if (!latestPrice || activeGuess || submitting) return;
@@ -188,10 +193,10 @@ export function App() {
       const guess = {
         guessId: result.guessId,
         direction,
-        remainingSeconds: result.remainingSeconds,
         entryPrice: result.entryPrice,
       };
       playerDataGeneration.current++;
+      setSecondsRemaining(result.remainingSeconds);
       setActiveGuess(guess);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : String(requestError));

@@ -56,12 +56,11 @@ bun run destroy
 
 ## Architecture
 
-The application uses three communication mechanisms, each for a distinct purpose:
+The application uses two communication mechanisms, each for a distinct purpose:
 
 | Abbreviation | Mechanism          | Direction                       | Purpose                                      |
 | ------------ | ------------------ | ------------------------------- | -------------------------------------------- |
 | `WS`         | WebSocket          | Coinbase → Backend and frontend | Independent BTC/USD price streams            |
-| `SSE`        | Server-Sent Events | Backend → Frontend              | Guess-resolution notifications only          |
 | `REST`       | REST API over HTTP | Frontend ↔ Backend              | Submit commands and load authoritative state |
 
 ### Price flow
@@ -94,8 +93,7 @@ Browser                     Backend                    PostgreSQL               
    │                           │ resolve eligible guesses  │                           │
    │                           ├──────────────────────────►│                           │
    │                           │◄──────────────────────────┤                           │
-   │ guess-resolved [SSE]      │                           │                           │
-   │◄──────────────────────────┤                           │                           │
+   │ countdown reaches zero    │                           │                           │
    │ GET latest guess + score [REST]                       │                           │
    ├──────────────────────────►│                           │                           │
    │                           │ query authoritative state │                           │
@@ -104,11 +102,11 @@ Browser                     Backend                    PostgreSQL               
    │◄──────────────────────────┤                           │                           │
 ```
 
-The frontend submits a new guess to the backend via REST. It also establishes an SSE connection to receive a message when the guess is resolved.
+The frontend submits a new guess to the backend via REST.
 
-The backend resolves guesses as follows: Whenever a new price update arrives, it checks the database for guesses eligible for resolution, meaning it checks if 60s have passed since the guess was received. If a guess can be resolved, the backend resolves it, stores the guess update and sends a message to the frontend. The frontend then fetches the user’s updated score and latest guess.
+The backend resolves guesses as follows: Whenever a new price update arrives, it checks the database for guesses eligible for resolution, meaning it checks if 60s have passed since the guess was received. If a guess can be resolved, the backend resolves it and stores the result. The frontend then observes the resolved state on its next REST request.
 
-The frontend opens the SSE connection only while it has a pending guess and closes it after. It does not poll and is not involved in the logic for resolving guesses.
+After the countdown reaches zero, the frontend checks the authoritative state through REST every two seconds until the guess is resolved. The frontend is not involved in the logic for resolving guesses.
 
 
 ### AWS request path
@@ -145,10 +143,6 @@ This is a pet project written for an application process.
 **The current design allows for only one backend instance** for the following reasons:
 
 - In more than one backend instance all instances would consume the price stream and update the guesses. Conditional updates inside a transaction can be used to preserve correctness, but the duplicated queries still waste database capacity. For horizontal scaling, we could for example have dedicated workers that work on disjoint batches.
-
-
--  SSE solves only the connection between one backend instance and one browser. For several backend instances, the instance that resolves a guess may not hold that player's browser connection. Correct cross-instance delivery would require a mechanism such as shared Pub/Sub.
-
 
 
 

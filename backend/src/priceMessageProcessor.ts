@@ -1,7 +1,5 @@
 import type { GuessRepository } from "./guessRepository";
 import type { LatestPriceWriter } from "./latestPriceStore";
-import { noRealtimeEvents } from "./realtimeEvents";
-import type { RealtimeEventPublisher } from "./realtimeEvents";
 
 export type PriceMessage = {
   price: number;
@@ -17,7 +15,6 @@ export class PriceMessageProcessor {
   constructor(
     private readonly guessRepository: Pick<GuessRepository, "resolveEligible">,
     private readonly latestPriceStore: LatestPriceWriter,
-    private readonly realtimeEvents: RealtimeEventPublisher = noRealtimeEvents,
   ) { }
 
   async process(message: PriceMessage): Promise<PriceProcessingResult> {
@@ -35,13 +32,6 @@ export class PriceMessageProcessor {
       message.price,
       message.observedAt,
     );
-
-    for (const guess of resolvedGuesses) {
-      this.realtimeEvents.publish({
-        type: "guess-resolved",
-        data: { guessId: guess.id, playerId: guess.playerId },
-      });
-    }
 
     return {
       resolvedCount: resolvedGuesses.length,

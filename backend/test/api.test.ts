@@ -3,7 +3,6 @@ import { createApi } from "../src/api";
 import { PendingGuessConflictError } from "../src/guessRepository";
 import type { GuessRepository, GuessRow, NewGuess } from "../src/guessRepository";
 import { InMemoryLatestPriceStore } from "../src/latestPriceStore";
-import { InMemoryRealtimeEvents } from "../src/realtimeEvents";
 
 const guessId = "6c3a2fc2-bcf5-4f5f-a755-21d91ff21973";
 const createdAt = new Date("2026-08-19T10:00:00.000Z");
@@ -27,7 +26,6 @@ function createRequiredApiDependencies(
   return {
     latestPriceStore,
     guessRepository: createApiGuessRepository(),
-    realtimeEventSubscriber: new InMemoryRealtimeEvents(),
     guessDurationSeconds: 60,
   };
 }
@@ -388,26 +386,5 @@ describe("GET /api/players/:playerId/score", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ wins: 4, losses: 2, score: 2 });
-  });
-});
-
-describe("GET /api/players/:playerId/events", () => {
-  test("opens a resolution-only event stream with a reconnect delay", async () => {
-    const { app } = createTestContext();
-    const response = await app.request("/api/players/player-1/events");
-    const reader = response.body?.getReader();
-
-    expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toBe("text/event-stream");
-    expect(reader).toBeDefined();
-
-    const decoder = new TextDecoder();
-    const firstChunk = await reader!.read();
-    const text = decoder.decode(firstChunk.value);
-    expect(text).toContain("event: connected");
-    expect(text).toContain("retry: 2000");
-    expect(text).not.toContain("event: price-updated");
-
-    await reader!.cancel();
   });
 });

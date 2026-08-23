@@ -1,17 +1,14 @@
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { streamSSE } from "hono/streaming";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { PendingGuessConflictError } from "./guessRepository";
 import type { GuessRepository, GuessRow, PlayerScore } from "./guessRepository";
 import type { LatestPriceLocalStore } from "./latestPriceStore";
-import type { RealtimeEvent, RealtimeEventSubscriber } from "./realtimeEvents";
 
 type ApiDependencies = {
   guessRepository: Pick<GuessRepository, "insert" | "findPlayerGuesses" | "getPlayerScore">;
-  realtimeEventSubscriber: RealtimeEventSubscriber;
   latestPriceStore: LatestPriceLocalStore;
   guessDurationSeconds: number;
   createId?: () => string;
@@ -25,7 +22,6 @@ const registerGuessSchema = z.object({
 
 export function createApi({
   guessRepository,
-  realtimeEventSubscriber,
   latestPriceStore,
   guessDurationSeconds,
   createId = () => crypto.randomUUID(),
@@ -124,47 +120,6 @@ export function createApi({
 
     const score = await guessRepository.getPlayerScore(playerId);
     return context.json(serializeScore(score));
-  });
-
-  app.get("/api/players/:playerId/events", (context) => {
-    const playerId = context.req.param("playerId").trim();
-    if (!playerId) {
-      return context.json({ error: "playerId must be a non-empty string" }, 400);
-    }
-
-    return streamSSE(context, async (stream) => {
-      let resolveDone = () => { };
-      const done = new Promise<void>((resolve) => {
-        resolveDone = resolve;
-      });
-      let cleanedUp = false;
-      let unsubscribe = () => { };
-      let writeQueue = Promise.resolve();
-      let heartbeat: ReturnType<typeof setInterval> | undefined;
-
-      const cleanup = () => {
-        if (cleanedUp) return;
-        cleanedUp = true;
-        if (heartbeat) clearInterval(heartbeat);
-        unsubscribe();
-        resolveDone();
-      };
-      const enqueue = (event: RealtimeEvent | { type: "connected" | "heartbeat"; data: object }) => {
-        writeQueue = writeQueue
-          .then(() => stream.writeSSE({
-            event: event.type,
-            data: JSON.stringify(event.data),
-            retry: event.type === "connected" ? 2_000 : undefined,
-          }))
-          .catch(cleanup);
-      };
-
-      unsubscribe = realtimeEventSubscriber.subscribe(playerId, enqueue);
-      stream.onAbort(cleanup);
-      enqueue({ type: "connected", data: {} });
-      heartbeat = setInterval(() => enqueue({ type: "heartbeat", data: {} }), 5_000);
-      await done;
-    });
   });
 
   app.notFound((context) => context.text("Not found", 404));
