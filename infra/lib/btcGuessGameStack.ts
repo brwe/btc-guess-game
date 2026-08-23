@@ -92,7 +92,7 @@ export class BtcGuessGameStack extends Stack {
         DB_HOST: database.dbInstanceEndpointAddress,
         DB_PORT: database.dbInstanceEndpointPort,
         DB_NAME: "postgres",
-        GUESS_DURATION_SECONDS: "5",
+        GUESS_DURATION_SECONDS: "60",
         COINBASE_WEBSOCKET_URL: "wss://ws-feed.exchange.coinbase.com",
         COINBASE_TICKER_CHANNEL: "ticker",
         RESET_DATABASE_ON_START: "false",
