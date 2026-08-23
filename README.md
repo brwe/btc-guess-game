@@ -4,8 +4,19 @@
 
 This app lets players guess whether the BTC price will be higher or lower after one minute.
 
+The player can at all times see their current score and the latest available BTC price in USD.
+The player can choose to enter a guess of either “up” or “down“
+After a guess is entered, the player cannot make new guesses until the existing guess is resolved.
+The guess is resolved when the price changes and at least 60 seconds have passed since the guess was made.
+If the guess is correct (up = price went higher, down = price went lower), the user gets 1 point added to their score. If the guess is incorrect, the user loses 1 point.
+Players can only make one guess at a time.
+New players start with a score of 0.
+
+
+
 ## Run locally
 
+uses docker compose to start up locally.
 From root directory, run:
 
 ```bash
@@ -41,8 +52,6 @@ The deployment outputs `ApplicationUrl`.
 cd infra
 bun run destroy
 ```
-
-
 
 
 ## Architecture
@@ -128,80 +137,18 @@ CloudFront
 
 
 
-## Assumptions
+## Limitations
 
-- The game uses the BTC/USD pair.
+This is a pet project written for an application process.
 
-- If the exchange pair changes, both the displayed price and the resolution logic need to use the same pair to keep guesses fair.
+**No database migrations.** The `guesses` table that stores current guesses can be recreated with `RESET_DATABASE_ON_START=true` but there is no proper handling of schema updates. 
 
-- The backend uses Coinbase `ticker_batch` by default so the app receives at most one changed price update every five seconds. Set `COINBASE_TICKER_CHANNEL=ticker` to receive higher-frequency updates when matches happen; this increases database resolution checks and SSE traffic.
+**The current design allows for only one backend instance** for the following reasons:
 
-- The backend keeps the latest BTC/USD price and the timestamp of the most recent update in memory.
-
-- The price displayed by the frontend is informational and can become stale while a guess request is in transit. The client sends only the player id and direction; when the backend accepts the request, it snapshots its latest known price, persists that value as the guess's entry price, and returns it in the response. That authoritative entry price can therefore differ slightly from the price the player saw when clicking. The frontend displays the returned entry price for the active guess. This tradeoff prevents clients from choosing or manipulating their own entry price.
-
-- Pending guesses use PostgreSQL as the source of truth instead of being duplicated in an in-memory map. When a price update arrives, the resolution design queries indexed pending guesses whose `resolve_after` timestamp has passed and whose entry price differs from the new price. This avoids synchronizing an in-memory copy with the database during one backend run.
-
-- Price updates are passed to a source-agnostic processor as `{ price, observedAt }`. Tests and the Coinbase WebSocket adapter call the same method. `observedAt` is the exchange event timestamp used to decide whether `resolve_after` has passed.
-
-- Resolved guesses store `resolved_at` and `resolved_price`. The result and score change are derived from `direction`, `entry_price`, and `resolved_price` instead of being persisted as duplicate data.
-
-- This pet-project setup does not use database migrations. Local Docker sets `RESET_DATABASE_ON_START=true`, so local backend starts recreate the `guesses` table. The AWS task sets it to `false` and uses idempotent table initialization so ECS replacements do not erase RDS data. Versioned migrations should replace this initializer before evolving a deployed schema.
-
-- This database-query approach has a scalability limitation: if every backend instance consumes the same price stream, every instance can query the same eligible guesses and attempt to resolve them. Conditional updates inside a transaction can preserve correctness, but the duplicated queries still waste database capacity. If horizontal scaling becomes necessary, price processing should move to one elected resolver or a dedicated worker; alternatively, workers can claim disjoint batches with PostgreSQL row locking such as `FOR UPDATE SKIP LOCKED`.
-
-- The backend keeps one upstream WebSocket connection to Coinbase and exposes one player-scoped Server-Sent Events stream to each frontend. The stream carries live price updates and guess-resolution notifications.
-
-- Anonymous players are identified by a generated player id stored in browser local storage, and that id is used to load the same score and guess history when the browser returns.
-
-- The backend and frontend are written in TypeScript. The backend runs on Bun and uses Hono for HTTP routing, middleware, and request validation. The frontend is built as static files for S3, ideally with CloudFront in front of the bucket.
-
-- The score starts at 0 for a new player and is calculated by the backend from that player's persisted resolved guesses. The frontend does not determine outcomes or increment score locally; it displays the result, wins, losses, and total score returned by the backend.
-
-- A player can only have one active guess at a time.
-
-- A guess resolves only after at least 60 seconds have passed and the price has changed.
+- In more than one backend instance all instances would consume the price stream and update the guesses. Conditional updates inside a transaction can be used to preserve correctness, but the duplicated queries still waste database capacity. For horizontal scaling , price processing should move to one elected resolver or a dedicated worker or workers can claim disjoint batches with PostgreSQL row locking such as `FOR UPDATE SKIP LOCKED`.
 
 
-
-
-## Realtime Updates and SSE Decision
-
-SSE was chosen over WebSockets because updates flow only from the backend to the browser. The browser loads the authoritative guess and score through REST when it first loads and whenever SSE connects or reconnects, so temporary disconnections and missed or duplicate resolution notifications recover from PostgreSQL. The high-frequency ticker supplies the displayed price. A 15-second heartbeat keeps idle streams active.
-
-The current event broadcaster is intentionally in-memory and therefore matches the current single-backend deployment. SSE solves only the connection between one backend instance and one browser. In a multi-instance deployment, the instance that resolves a guess may not hold that player's browser connection. Correct cross-instance delivery would require shared Pub/Sub such as PostgreSQL `LISTEN/NOTIFY`, Redis, or a message broker. Strong delivery guarantees may additionally require a transactional outbox so a committed resolution cannot lose its notification.
-
-## Backend as the soucre of truth
-
-
-
-TODOS:
-
-- make the app work:
-  - ~~concurrency issues~~ -> don't do
-  - ~~migration handling~~ -> don't do
-  - ~~authorizaton and authentication~~ -> don't do
-  - deployment -> done
-  - ~~design~~ -> don't do
-  - documentation
-  - code review
-  - ~~stale state frontend if db was dropped~~ -> don't do
-  - ~~the game would be more fun if one could see the graph~~ -> don't do
-  - ~~fix vite reconnect issues when backen goes down~~ -> later
-
-
-4. ~~Entry price is controlled by the client~~ -> solved by letting the backend snapshot and return the authoritative entry price. The client sends only:
-
-```json
-{
-  "playerId": "...",
-  "direction": "up"
-}
-```
-
-
-5. ~~Frontend polling can count a result twice~~ -> solved by making the backend authoritative for outcomes and score, then replacing price and guess polling with SSE notifications plus authoritative REST snapshot reads.
-
+-  SSE solves only the connection between one backend instance and one browser. For several backend instances, the instance that resolves a guess may not hold that player's browser connection. Correct cross-instance delivery would require shared Pub/Sub such as PostgreSQL `LISTEN/NOTIFY`, Redis, or a message broker.
 
 
 

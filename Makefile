@@ -1,4 +1,4 @@
-.PHONY: backend-test fullstack-up fullstack-up-realtime
+.PHONY: backend-test fullstack-up-realtime
 
 backend-test:
 	cd backend && bun install --frozen-lockfile && bun test
