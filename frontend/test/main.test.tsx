@@ -70,6 +70,7 @@ describe("App player-data synchronization", () => {
           status: "pending",
           entryPrice: 61_000,
           resolveAfter: "2026-08-22T18:01:00.000Z",
+          remainingSeconds: 60,
         }, 201);
       }
       if (url.endsWith("/score")) return await scoreResponses.shift()!;
@@ -99,6 +100,7 @@ describe("App player-data synchronization", () => {
         resolveAfter: "2026-08-22T17:59:00.000Z",
         resolvedPrice: 61_000,
         result: "won",
+        remainingSeconds: 0,
       }]));
     });
 
@@ -106,6 +108,7 @@ describe("App player-data synchronization", () => {
     await waitFor(() => expect((upButton as HTMLButtonElement).disabled).toBe(false));
     await act(async () => fireEvent.click(upButton));
     await view.findByText("Your guess");
+    expect(view.queryByText("60s remaining")).not.toBeNull();
 
     act(() => {
       events.emit("price-updated", {
@@ -127,6 +130,7 @@ describe("App player-data synchronization", () => {
         resolveAfter: "2026-08-22T17:59:00.000Z",
         resolvedPrice: 61_000,
         result: "won",
+        remainingSeconds: 0,
       }]));
     });
 

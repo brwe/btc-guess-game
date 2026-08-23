@@ -88,6 +88,7 @@ describe("POST /api/guesses", () => {
       status: "pending",
       entryPrice: latestPrice,
       resolveAfter: "2026-08-19T10:01:00.000Z",
+      remainingSeconds: 60,
     });
     expect(inserted).toEqual([{
       id: guessId,
@@ -193,6 +194,7 @@ describe("POST /api/guesses", () => {
       status: "pending",
       entryPrice: latestPrice,
       resolveAfter: "2026-08-19T10:00:05.000Z",
+      remainingSeconds: 5,
     });
     expect(inserted[0]?.resolveAfter).toEqual(new Date("2026-08-19T10:00:05.000Z"));
   });
@@ -316,6 +318,7 @@ describe("GET /api/players/:playerId/guesses", () => {
       resolvedAt: null,
       resolvedPrice: null,
       result: null,
+      remainingSeconds: 60,
     }]);
   });
 

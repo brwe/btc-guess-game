@@ -95,6 +95,7 @@ export function createApi({
         status: "pending" as const,
         entryPrice: latestPrice.price,
         resolveAfter: resolveAfter.toISOString(),
+        remainingSeconds: guessDurationSeconds,
       }, 201);
     },
   );
@@ -111,7 +112,8 @@ export function createApi({
     }
 
     const guesses = await guessRepository.findPlayerGuesses(playerId, limit);
-    return context.json(guesses.map(serializeGuess));
+    const responseTime = now();
+    return context.json(guesses.map((guess) => serializeGuess(guess, responseTime)));
   });
 
   app.get("/api/players/:playerId/score", async (context) => {
@@ -180,7 +182,7 @@ export function createApi({
   return app;
 }
 
-function serializeGuess(guess: GuessRow) {
+function serializeGuess(guess: GuessRow, currentTime: Date) {
   return {
     guessId: guess.id,
     playerId: guess.player_id,
@@ -192,7 +194,16 @@ function serializeGuess(guess: GuessRow) {
     resolvedAt: guess.resolved_at?.toISOString() ?? null,
     resolvedPrice: guess.resolved_price,
     result: getGuessResult(guess),
+    remainingSeconds: guess.status === "pending"
+      ? getRemainingSeconds(guess.resolve_after, currentTime)
+      : 0,
   };
+}
+
+function getRemainingSeconds(resolveAfter: Date, currentTime: Date) {
+  return Math.max(0, Math.ceil(
+    (resolveAfter.getTime() - currentTime.getTime()) / 1_000,
+  ));
 }
 
 function getGuessResult(guess: GuessRow) {

@@ -16,6 +16,7 @@ type GuessResponse = {
   entryPrice: number;
   status: "pending" | "resolved";
   resolveAfter: string;
+  remainingSeconds: number;
   resolvedPrice: number | null;
   result: "won" | "lost" | null;
 };
@@ -23,7 +24,7 @@ type GuessResponse = {
 type ActiveGuess = {
   guessId: string;
   direction: Direction;
-  resolveAfter: string;
+  remainingSeconds: number;
   entryPrice: number;
 };
 
@@ -108,7 +109,7 @@ export function App() {
           setActiveGuess({
             guessId: guess.guessId,
             direction: guess.direction,
-            resolveAfter: guess.resolveAfter,
+            remainingSeconds: guess.remainingSeconds,
             entryPrice: guess.entryPrice,
           });
           setLastResolvedGuess(null);
@@ -164,17 +165,10 @@ export function App() {
       setSecondsRemaining(0);
       return;
     }
-    const resolveAfter = activeGuess.resolveAfter;
-
-    function updateCountdown() {
-      setSecondsRemaining(Math.max(
-        0,
-        Math.ceil((Date.parse(resolveAfter) - Date.now()) / 1_000),
-      ));
-    }
-
-    updateCountdown();
-    const interval = window.setInterval(updateCountdown, 1_000);
+    setSecondsRemaining(activeGuess.remainingSeconds);
+    const interval = window.setInterval(() => {
+      setSecondsRemaining((remaining) => Math.max(0, remaining - 1));
+    }, 1_000);
     return () => window.clearInterval(interval);
   }, [activeGuess]);
 
@@ -189,6 +183,7 @@ export function App() {
         status: "pending";
         entryPrice: number;
         resolveAfter: string;
+        remainingSeconds: number;
       }>("/api/guesses", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -200,7 +195,7 @@ export function App() {
       const guess = {
         guessId: result.guessId,
         direction,
-        resolveAfter: result.resolveAfter,
+        remainingSeconds: result.remainingSeconds,
         entryPrice: result.entryPrice,
       };
       playerDataGeneration.current++;
