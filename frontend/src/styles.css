@@ -222,16 +222,23 @@ h1 {
 }
 
 .score {
-  margin-top: 24px;
-  padding-top: 24px;
+  margin-top: 16px;
+  padding: 20px 24px;
   align-items: flex-end;
-  border-top: 1px solid var(--color-border);
+  background: var(--color-subtle);
+  border-radius: 20px;
 }
 
-.score > div { display: grid; }
+.score > div {
+  display: grid;
+  gap: 6px;
+}
+
+.score-record {
+  text-align: right;
+}
 
 .score strong {
-  margin-top: 6px;
   color: var(--color-text);
   font-size: var(--type-emphasis);
   font-variant-numeric: tabular-nums;
@@ -239,8 +246,9 @@ h1 {
 }
 
 .score-math {
-  color: var(--color-muted);
+  color: var(--color-text);
   font-size: var(--type-base);
+  font-weight: var(--weight-medium);
   text-align: right;
 }
 
@@ -261,7 +269,8 @@ h1 {
   }
 
   :root { --type-price: clamp(2.2rem, 12vw, 3.2rem); }
-  .guess-card { padding: 20px; }
+  .guess-card,
+  .score { padding: 20px; }
 
   .guess-card dl {
     right: 20px;

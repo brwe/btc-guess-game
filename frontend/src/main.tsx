@@ -323,7 +323,10 @@ export function App() {
           <span className="score-label">Score</span>
           <strong>{score.score >= 0 ? `+${score.score}` : score.score}</strong>
         </div>
-        <span className="score-math">{score.wins} wins − {score.losses} losses</span>
+        <div className="score-record">
+          <span className="score-label">Record</span>
+          <span className="score-math">{score.wins} wins − {score.losses} losses</span>
+        </div>
       </section>
 
       {error ? <p className="error">{error}</p> : null}
