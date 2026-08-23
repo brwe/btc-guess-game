@@ -36,14 +36,6 @@ export class PriceMessageProcessor {
       message.observedAt,
     );
 
-    this.realtimeEvents.publish({
-      type: "price-updated",
-      data: {
-        pair: "BTC/USD",
-        price: message.price,
-        observedAt: message.observedAt.toISOString(),
-      },
-    });
     for (const guess of resolvedGuesses) {
       this.realtimeEvents.publish({
         type: "guess-resolved",

@@ -60,9 +60,9 @@ The application uses three communication mechanisms, each for a distinct purpose
 
 | Abbreviation | Mechanism          | Direction          | Purpose                                               |
 | ------------ | ------------------ | ------------------ | ----------------------------------------------------- |
-| `WS`         | WebSocket          | Coinbase → Backend | Continuous BTC/USD price updates                      |
-| `SSE`        | Server-Sent Events | Backend → Frontend | Live price updates and guess-resolution notifications |
-| `REST`       | REST API over HTTP | Frontend ↔ Backend | Submit commands and load authoritative snapshots      |
+| `WS`         | WebSocket          | Coinbase → Backend and frontend | Independent BTC/USD price streams            |
+| `SSE`        | Server-Sent Events | Backend → Frontend              | Guess-resolution notifications only          |
+| `REST`       | REST API over HTTP | Frontend ↔ Backend               | Submit commands and load authoritative state |
 
 ### Price flow
 
@@ -71,13 +71,10 @@ Frontend                    Backend                     Coinbase
    │                           │                           │
    │                           │  BTC/USD price [WS]       │
    │                           │◄──────────────────────────┤
-   │  price-updated [SSE]      │                           │
-   │◄──────────────────────────┤                           │
+   │  BTC/USD price [WS]       │                           │
+   │◄────────────────────────────────────────────────────────┤
 ```
-BTC/USD prices are retrieved through a coinbase websocket, see https://docs.cdp.coinbase.com/exchange/websocket-feed/channels#ticker-channel
-
-The backend subscribes to this 
-The price is delivered exclusively through the live SSE path. On initial load and after an SSE reconnection, the frontend waits for the next event from the high-frequency `ticker` stream.
+Both the frontend and backend independently subscribe to the Coinbase WebSocket ticker. The frontend connection is used only to display the live price. The backend connection remains authoritative for entry prices and guess resolution. This avoids relaying every price update through the application's AWS infrastructure.
 
 ### Guess lifecycle
 
@@ -97,8 +94,6 @@ Browser                     Backend                    PostgreSQL               
    │                           │ resolve eligible guesses  │                           │
    │                           ├──────────────────────────►│                           │
    │                           │◄──────────────────────────┤                           │
-   │ price-updated [SSE]       │                           │                           │
-   │◄──────────────────────────┤                           │                           │
    │ guess-resolved [SSE]      │                           │                           │
    │◄──────────────────────────┤                           │                           │
    │ GET latest guess + score [REST]                       │                           │
@@ -113,7 +108,7 @@ The frontend submits a new guess to the backend via REST.
 
 The backend resolves guesses as follows: Whenever a new price update arrives, it checks the database for guesses eligible for resolution, meaning it checks if 60s have passed since the guess was received. If a guess can be resolved, the backend resolves it, stores the guess update and sends a message to the frontend. The frontend then fetches the user’s updated score and latest guess.
 
-The frontend does not poll and is not involved in the logic for resolving guesses.
+The frontend opens the SSE connection only while it has a pending guess. It does not poll and is not involved in the logic for resolving guesses.
 
 
 ### AWS request path
@@ -153,8 +148,6 @@ This is a pet project written for an application process.
 
 
 -  SSE solves only the connection between one backend instance and one browser. For several backend instances, the instance that resolves a guess may not hold that player's browser connection. Correct cross-instance delivery would require a mechanism such as shared Pub/Sub.
-
-
 
 
 

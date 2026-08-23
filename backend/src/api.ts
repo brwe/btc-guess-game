@@ -162,17 +162,6 @@ export function createApi({
       unsubscribe = realtimeEventSubscriber.subscribe(playerId, enqueue);
       stream.onAbort(cleanup);
       enqueue({ type: "connected", data: {} });
-      const latestPrice = latestPriceStore.get();
-      if (latestPrice) {
-        enqueue({
-          type: "price-updated",
-          data: {
-            pair: "BTC/USD",
-            price: latestPrice.price,
-            observedAt: latestPrice.observedAt.toISOString(),
-          },
-        });
-      }
       heartbeat = setInterval(() => enqueue({ type: "heartbeat", data: {} }), 5_000);
       await done;
     });

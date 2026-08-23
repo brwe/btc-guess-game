@@ -1,14 +1,12 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
+import { subscribeToCoinbaseTicker } from "./coinbaseTicker";
+import type { CoinbasePrice } from "./coinbaseTicker";
 import "./styles.css";
 
 type Direction = "up" | "down";
 
-type PriceResponse = {
-  pair: "BTC/USD";
-  price: number;
-  observedAt: string;
-};
+type PriceResponse = CoinbasePrice;
 
 type GuessResponse = {
   guessId: string;
@@ -82,6 +80,7 @@ async function getLatestGuess() {
 
 export function App() {
   const playerDataGeneration = useRef(0);
+  const mounted = useRef(false);
   const [latestPrice, setLatestPrice] = useState<PriceResponse | null>(null);
   const [activeGuess, setActiveGuess] = useState<ActiveGuess | null>(null);
   const [lastResolvedGuess, setLastResolvedGuess] = useState<ResolvedGuess | null>(null);
@@ -90,75 +89,75 @@ export function App() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const loadPlayerData = useCallback(async () => {
+    const requestGeneration = ++playerDataGeneration.current;
+    try {
+      const [backendScore, guess] = await Promise.all([
+        getPlayerScore(),
+        getLatestGuess(),
+      ]);
+      if (!mounted.current || requestGeneration !== playerDataGeneration.current) return;
+
+      setScore(backendScore);
+      if (guess?.status === "pending") {
+        setActiveGuess({
+          guessId: guess.guessId,
+          direction: guess.direction,
+          remainingSeconds: guess.remainingSeconds,
+          entryPrice: guess.entryPrice,
+        });
+        setLastResolvedGuess(null);
+      } else if (guess && guess.resolvedPrice !== null && guess.result !== null) {
+        setActiveGuess(null);
+        setLastResolvedGuess({
+          guessId: guess.guessId,
+          direction: guess.direction,
+          entryPrice: guess.entryPrice,
+          resolvedPrice: guess.resolvedPrice,
+          result: guess.result,
+        });
+      } else {
+        setActiveGuess(null);
+        setLastResolvedGuess(null);
+      }
+      setError(null);
+    } catch (requestError) {
+      if (mounted.current && requestGeneration === playerDataGeneration.current) {
+        setError(requestError instanceof Error ? requestError.message : String(requestError));
+      }
+    }
+  }, []);
+
   useEffect(() => {
-    let active = true;
-    const playerId = encodeURIComponent(getPlayerId());
-    const events = new EventSource(`/api/players/${playerId}/events`);
-
-    async function loadPlayerData() {
-      const requestGeneration = ++playerDataGeneration.current;
-      try {
-        const [backendScore, guess] = await Promise.all([
-          getPlayerScore(),
-          getLatestGuess(),
-        ]);
-        if (!active || requestGeneration !== playerDataGeneration.current) return;
-
-        setScore(backendScore);
-        if (guess?.status === "pending") {
-          setActiveGuess({
-            guessId: guess.guessId,
-            direction: guess.direction,
-            remainingSeconds: guess.remainingSeconds,
-            entryPrice: guess.entryPrice,
-          });
-          setLastResolvedGuess(null);
-        } else if (guess && guess.resolvedPrice !== null && guess.result !== null) {
-          setActiveGuess(null);
-          setLastResolvedGuess({
-            guessId: guess.guessId,
-            direction: guess.direction,
-            entryPrice: guess.entryPrice,
-            resolvedPrice: guess.resolvedPrice,
-            result: guess.result,
-          });
-        } else {
-          setActiveGuess(null);
-          setLastResolvedGuess(null);
-        }
-        setError(null);
-      } catch (requestError) {
-        if (active && requestGeneration === playerDataGeneration.current) {
-          setError(requestError instanceof Error ? requestError.message : String(requestError));
-        }
-      }
-    }
-
-    function handlePriceUpdated(event: Event) {
-      try {
-        const price = JSON.parse((event as MessageEvent<string>).data) as PriceResponse;
-        if (active) {
-          setLatestPrice(price);
-          setError(null);
-        }
-      } catch {
-        if (active) setError("received an invalid price update");
-      }
-    }
-
-    events.addEventListener("connected", () => void loadPlayerData());
-    events.addEventListener("price-updated", handlePriceUpdated);
-    events.addEventListener("guess-resolved", () => void loadPlayerData());
-    events.onerror = () => {
-      if (active) setError("live updates disconnected; reconnecting...");
-    };
-
+    mounted.current = true;
     void loadPlayerData();
     return () => {
-      active = false;
-      events.close();
+      mounted.current = false;
     };
-  }, []);
+  }, [loadPlayerData]);
+
+  useEffect(() => subscribeToCoinbaseTicker({
+    onPrice: (price) => {
+      if (!mounted.current) return;
+      setLatestPrice(price);
+      setError(null);
+    },
+    onDisconnect: () => {
+      if (mounted.current) setError("price updates disconnected; reconnecting...");
+    },
+  }), []);
+
+  useEffect(() => {
+    if (!activeGuess) return;
+    const playerId = encodeURIComponent(getPlayerId());
+    const events = new EventSource(`/api/players/${playerId}/events`);
+    events.addEventListener("connected", () => void loadPlayerData());
+    events.addEventListener("guess-resolved", () => void loadPlayerData());
+    events.onerror = () => {
+      if (mounted.current) setError("resolution updates disconnected; reconnecting...");
+    };
+    return () => events.close();
+  }, [activeGuess?.guessId, loadPlayerData]);
 
   useEffect(() => {
     if (!activeGuess) {

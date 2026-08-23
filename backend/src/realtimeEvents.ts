@@ -1,9 +1,5 @@
 export type RealtimeEvent =
-  | {
-    type: "price-updated";
-    data: { pair: "BTC/USD"; price: number; observedAt: string };
-  }
-  | {
+  {
     type: "guess-resolved";
     data: { guessId: string; playerId: string };
   };
@@ -27,9 +23,7 @@ export class InMemoryRealtimeEvents implements RealtimeEventPublisher, RealtimeE
 
   publish(event: RealtimeEvent) {
     for (const subscription of this.subscriptions.values()) {
-      if (event.type === "guess-resolved" && event.data.playerId !== subscription.playerId) {
-        continue;
-      }
+      if (event.data.playerId !== subscription.playerId) continue;
 
       subscription.listener(event);
     }

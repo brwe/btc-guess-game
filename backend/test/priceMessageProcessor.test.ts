@@ -29,7 +29,7 @@ describe("PriceMessageProcessor", () => {
     });
   });
 
-  test("publishes price and player-scoped resolution events after resolving", async () => {
+  test("publishes player-scoped resolution events after resolving", async () => {
     const realtimeEvents = new InMemoryRealtimeEvents();
     const playerOneEvents: string[] = [];
     const playerTwoEvents: string[] = [];
@@ -46,8 +46,8 @@ describe("PriceMessageProcessor", () => {
       observedAt: new Date("2026-08-21T12:01:00.000Z"),
     });
 
-    expect(playerOneEvents).toEqual(["price-updated", "guess-resolved"]);
-    expect(playerTwoEvents).toEqual(["price-updated"]);
+    expect(playerOneEvents).toEqual(["guess-resolved"]);
+    expect(playerTwoEvents).toEqual([]);
   });
 
   test("stores the latest valid price message", async () => {

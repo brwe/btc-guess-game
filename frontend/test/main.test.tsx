@@ -31,6 +31,37 @@ class FakeEventSource {
   close() {}
 }
 
+class FakeWebSocket {
+  static current: FakeWebSocket | null = null;
+  static readonly OPEN = 1;
+
+  readonly sent: string[] = [];
+  private readonly listeners = new Map<string, EventListener[]>();
+
+  constructor(readonly url: string) {
+    FakeWebSocket.current = this;
+  }
+
+  addEventListener(type: string, listener: EventListener) {
+    const listeners = this.listeners.get(type) ?? [];
+    listeners.push(listener);
+    this.listeners.set(type, listeners);
+  }
+
+  send(data: string) {
+    this.sent.push(data);
+  }
+
+  emit(type: string, data?: string) {
+    const event = data === undefined
+      ? new Event(type)
+      : new MessageEvent(type, { data });
+    for (const listener of this.listeners.get(type) ?? []) listener(event);
+  }
+
+  close() {}
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((promiseResolve) => {
@@ -50,18 +81,16 @@ afterEach(() => {
   cleanup();
   localStorage.clear();
   FakeEventSource.current = null;
+  FakeWebSocket.current = null;
 });
 
 describe("App player-data synchronization", () => {
   test("an older player-data response cannot clear a newly submitted pending guess", async () => {
     const staleScore = deferred<Response>();
     const staleGuess = deferred<Response>();
-    const freshScore = deferred<Response>();
-    const freshGuess = deferred<Response>();
-    const scoreResponses = [staleScore.promise, freshScore.promise];
-    const guessResponses = [staleGuess.promise, freshGuess.promise];
 
     globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
+    globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
     globalThis.fetch = (async (input, init) => {
       const url = String(input);
       if (url === "/api/guesses" && init?.method === "POST") {
@@ -73,35 +102,28 @@ describe("App player-data synchronization", () => {
           remainingSeconds: 60,
         }, 201);
       }
-      if (url.endsWith("/score")) return await scoreResponses.shift()!;
-      if (url.includes("/guesses?limit=1")) return await guessResponses.shift()!;
+      if (url.endsWith("/score")) return await staleScore.promise;
+      if (url.includes("/guesses?limit=1")) return await staleGuess.promise;
       throw new Error(`unexpected request: ${url}`);
     }) as typeof fetch;
     localStorage.setItem("btc-game-player-id", "player-1");
 
     const view = render(<App />);
-    const events = FakeEventSource.current!;
+    expect(FakeEventSource.current).toBeNull();
+    const ticker = FakeWebSocket.current!;
     act(() => {
-      events.emit("price-updated", {
-        pair: "BTC/USD",
-        price: 61_000,
-        observedAt: "2026-08-22T18:00:00.000Z",
-      });
-      events.emit("guess-resolved");
+      ticker.emit("open");
+      ticker.emit("message", JSON.stringify({
+        type: "ticker",
+        product_id: "BTC-USD",
+        price: "61000",
+        time: "2026-08-22T18:00:00.000Z",
+      }));
     });
-
-    await act(async () => {
-      freshScore.resolve(jsonResponse({ wins: 1, losses: 0, score: 1 }));
-      freshGuess.resolve(jsonResponse([{
-        guessId: "guess-a",
-        direction: "up",
-        entryPrice: 60_000,
-        status: "resolved",
-        resolveAfter: "2026-08-22T17:59:00.000Z",
-        resolvedPrice: 61_000,
-        result: "won",
-        remainingSeconds: 0,
-      }]));
+    expect(JSON.parse(ticker.sent[0]!)).toEqual({
+      type: "subscribe",
+      product_ids: ["BTC-USD"],
+      channels: ["ticker"],
     });
 
     const upButton = await view.findByRole("button", { name: "↑ Higher" });
@@ -109,13 +131,15 @@ describe("App player-data synchronization", () => {
     await act(async () => fireEvent.click(upButton));
     await view.findByText("Your guess");
     expect(view.queryByText("60s remaining")).not.toBeNull();
+    expect(FakeEventSource.current?.url).toContain("/events");
 
     act(() => {
-      events.emit("price-updated", {
-        pair: "BTC/USD",
-        price: 61_012.34,
-        observedAt: "2026-08-22T18:00:01.000Z",
-      });
+      ticker.emit("message", JSON.stringify({
+        type: "ticker",
+        product_id: "BTC-USD",
+        price: "61012.34",
+        time: "2026-08-22T18:00:01.000Z",
+      }));
     });
     expect(await view.findByText("↑ $12.34")).not.toBeNull();
     expect(view.queryByText("You can guess again after this round settles.")).not.toBeNull();
