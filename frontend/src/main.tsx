@@ -80,7 +80,6 @@ async function getLatestGuess() {
 
 export function App() {
   const playerDataGeneration = useRef(0);
-  const mounted = useRef(false);
   const [latestPrice, setLatestPrice] = useState<PriceResponse | null>(null);
   const [activeGuess, setActiveGuess] = useState<ActiveGuess | null>(null);
   const [lastResolvedGuess, setLastResolvedGuess] = useState<ResolvedGuess | null>(null);
@@ -96,7 +95,7 @@ export function App() {
         getPlayerScore(),
         getLatestGuess(),
       ]);
-      if (!mounted.current || requestGeneration !== playerDataGeneration.current) return;
+      if (requestGeneration !== playerDataGeneration.current) return;
 
       setScore(backendScore);
       if (guess?.status === "pending") {
@@ -122,28 +121,23 @@ export function App() {
       }
       setError(null);
     } catch (requestError) {
-      if (mounted.current && requestGeneration === playerDataGeneration.current) {
+      if (requestGeneration === playerDataGeneration.current) {
         setError(requestError instanceof Error ? requestError.message : String(requestError));
       }
     }
   }, []);
 
   useEffect(() => {
-    mounted.current = true;
     void loadPlayerData();
-    return () => {
-      mounted.current = false;
-    };
   }, [loadPlayerData]);
 
   useEffect(() => subscribeToCoinbaseTicker({
     onPrice: (price) => {
-      if (!mounted.current) return;
       setLatestPrice(price);
       setError(null);
     },
     onDisconnect: () => {
-      if (mounted.current) setError("price updates disconnected; reconnecting...");
+      setError("price updates disconnected; reconnecting...");
     },
   }), []);
 
@@ -154,7 +148,7 @@ export function App() {
     events.addEventListener("connected", () => void loadPlayerData());
     events.addEventListener("guess-resolved", () => void loadPlayerData());
     events.onerror = () => {
-      if (mounted.current) setError("resolution updates disconnected; reconnecting...");
+      setError("resolution updates disconnected; reconnecting...");
     };
     return () => events.close();
   }, [activeGuess?.guessId, loadPlayerData]);
