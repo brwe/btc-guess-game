@@ -1,4 +1,4 @@
-# epilot Bitcoin Guessing Game
+# Bitcoin Trend Guessing Game
 
 ## Overview
 
@@ -6,7 +6,7 @@ This app lets players guess whether the BTC price will be higher or lower after 
 
 ## Run locally
 
-From `/Users/a2tirb/robofarm/epilot-challenge`, run:
+From root directory, run:
 
 ```bash
 make fullstack-up-realtime

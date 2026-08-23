@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "epilot-challenge-frontend",
+      "name": "btc-guess-game-frontend",
       "dependencies": {
         "react": "19.1.1",
         "react-dom": "19.1.1",

@@ -1,5 +1,5 @@
 {
-  "name": "epilot-challenge-backend",
+  "name": "btc-guess-game-backend",
   "private": true,
   "type": "module",
   "scripts": {

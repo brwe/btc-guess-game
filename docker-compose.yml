@@ -2,15 +2,15 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: epilot
-      POSTGRES_PASSWORD: epilot
-      POSTGRES_DB: epilot
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U epilot -d epilot"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
       interval: 2s
       timeout: 5s
       retries: 10
@@ -27,7 +27,7 @@ services:
     environment:
       PORT: "3001"
       HOST: "0.0.0.0"
-      DATABASE_URL: "postgresql://epilot:epilot@postgres:5432/epilot"
+      DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/postgres"
       GUESS_DURATION_SECONDS: "${GUESS_DURATION_SECONDS:-60}"
       COINBASE_WEBSOCKET_URL: "${COINBASE_WEBSOCKET_URL:-wss://ws-feed.exchange.coinbase.com}"
       COINBASE_TICKER_CHANNEL: "${COINBASE_TICKER_CHANNEL:-ticker_batch}"

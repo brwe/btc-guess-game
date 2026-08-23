@@ -21,7 +21,7 @@ import {
 import * as cr from "aws-cdk-lib/custom-resources";
 import { Construct } from "constructs";
 
-export class EpilotChallengeStack extends Stack {
+export class BtcGuessGameStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
 
@@ -55,8 +55,8 @@ export class EpilotChallengeStack extends Stack {
         version: rds.PostgresEngineVersion.VER_16,
       }),
       instanceType: new ec2.InstanceType("t4g.micro"),
-      credentials: rds.Credentials.fromGeneratedSecret("epilot"),
-      databaseName: "epilot",
+      credentials: rds.Credentials.fromGeneratedSecret("postgres"),
+      databaseName: "postgres",
       allocatedStorage: 20,
       storageType: rds.StorageType.GP3,
       storageEncrypted: true,
@@ -91,7 +91,7 @@ export class EpilotChallengeStack extends Stack {
         PORT: "3001",
         DB_HOST: database.dbInstanceEndpointAddress,
         DB_PORT: database.dbInstanceEndpointPort,
-        DB_NAME: "epilot",
+        DB_NAME: "postgres",
         GUESS_DURATION_SECONDS: "5",
         COINBASE_WEBSOCKET_URL: "wss://ws-feed.exchange.coinbase.com",
         COINBASE_TICKER_CHANNEL: "ticker",

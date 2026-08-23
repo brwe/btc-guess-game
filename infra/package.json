@@ -1,5 +1,5 @@
 {
-  "name": "epilot-challenge-infrastructure",
+  "name": "btc-guess-game-infrastructure",
   "private": true,
   "type": "module",
   "scripts": {

@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "epilot-challenge-backend",
+      "name": "btc-guess-game-backend",
       "dependencies": {
         "@hono/zod-validator": "^0.9.0",
         "hono": "^4.13.3",

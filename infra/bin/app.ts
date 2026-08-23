@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { App } from "aws-cdk-lib";
-import { EpilotChallengeStack } from "../lib/epilotChallengeStack";
+import { BtcGuessGameStack } from "../lib/btcGuessGameStack";
 
 const app = new App();
 const account = process.env.CDK_DEFAULT_ACCOUNT;
@@ -13,7 +13,7 @@ if (account) {
   );
 }
 
-new EpilotChallengeStack(app, "EpilotChallengeStack", {
+new BtcGuessGameStack(app, "BtcGuessGameStack", {
   env: {
     account,
     region,
