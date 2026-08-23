@@ -109,10 +109,6 @@ Browser                     Backend                    PostgreSQL               
 
 
 
-Prices received before `resolve_after` may update the displayed ticker but cannot settle the guess. The first eligible price after `resolve_after` whose value differs from the entry price resolves it.
- 
-PostgreSQL enforces at most one pending guess per player with a partial unique index on `player_id` where the status is `pending`. If concurrent requests try to create two guesses for one player, the database accepts one and the backend returns `409 Conflict` for the other.
-
 
 ### AWS request path
 
@@ -147,10 +143,10 @@ This is a pet project written for an application process.
 
 **The current design allows for only one backend instance** for the following reasons:
 
-- In more than one backend instance all instances would consume the price stream and update the guesses. Conditional updates inside a transaction can be used to preserve correctness, but the duplicated queries still waste database capacity. For horizontal scaling , price processing should move to one elected resolver or a dedicated worker or workers can claim disjoint batches with PostgreSQL row locking such as `FOR UPDATE SKIP LOCKED`.
+- In more than one backend instance all instances would consume the price stream and update the guesses. Conditional updates inside a transaction can be used to preserve correctness, but the duplicated queries still waste database capacity. For horizontal scaling, we could for example have dedicated workers that work on disjoint batches.
 
 
--  SSE solves only the connection between one backend instance and one browser. For several backend instances, the instance that resolves a guess may not hold that player's browser connection. Correct cross-instance delivery would require shared Pub/Sub such as PostgreSQL `LISTEN/NOTIFY`, Redis, or a message broker.
+-  SSE solves only the connection between one backend instance and one browser. For several backend instances, the instance that resolves a guess may not hold that player's browser connection. Correct cross-instance delivery would require a mechanism such as shared Pub/Sub.
 
 
 
