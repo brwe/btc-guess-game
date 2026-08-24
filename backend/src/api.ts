@@ -71,8 +71,8 @@ export function createApi({
     async (context) => {
       const body = context.req.valid("json");
       const latestPrice = latestPriceStore.get();
-      if (!latestPrice) {
-        return context.json({ error: "price not available" }, 503);
+      if (!isReady() || !latestPrice) {
+        return context.json({ error: "authoritative price temporarily unavailable" }, 503);
       }
 
       const guessId = createId();

@@ -283,7 +283,32 @@ describe("POST /api/guesses", () => {
     });
 
     expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({ error: "price not available" });
+    expect(await response.json()).toEqual({
+      error: "authoritative price temporarily unavailable",
+    });
+    expect(inserted).toHaveLength(0);
+  });
+
+  test("returns 503 instead of accepting a guess when the stored price is stale", async () => {
+    const inserted: NewGuess[] = [];
+    const app = createApi({
+      ...createRequiredApiDependencies(),
+      isReady: () => false,
+      guessRepository: createApiGuessRepository({
+        async insert(guess) { inserted.push(guess); },
+      }),
+    });
+
+    const response = await app.request("/api/guesses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ direction: "up", playerId: "player-1" }),
+    });
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      error: "authoritative price temporarily unavailable",
+    });
     expect(inserted).toHaveLength(0);
   });
 });
