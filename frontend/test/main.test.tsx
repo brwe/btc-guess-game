@@ -59,15 +59,15 @@ function createFakeTicker() {
 
 describe("App player-data synchronization", () => {
   test("an older player-data response cannot clear a newly submitted pending guess", async () => {
-    // Keep the initial score and latest-guess requests pending so they can finish
-    // after the player submits a newer guess.
+    // Keep the initial latest-guess request pending so the initial player-data
+    // load can finish after the player submits a newer guess.
     const staleScore = deferred<Response>();
     const staleGuess = deferred<Response>();
     const ticker = createFakeTicker();
     const requests: Array<{ url: string; method: string; body: unknown }> = [];
 
     // Return a new pending guess immediately on POST, while holding the initial
-    // player-data GET requests until the test explicitly resolves them below.
+    // latest-guess request until the test explicitly resolves it below.
     globalThis.fetch = (async (input, init) => {
       const url = String(input);
       const method = init?.method ?? "GET";
@@ -96,20 +96,16 @@ describe("App player-data synchronization", () => {
     // Use a stable identity so every request belongs to the same player.
     localStorage.setItem("btc-game-player-id", "player-1");
 
-    // Rendering starts the two held player-data requests. Supplying a price
-    // enables the guess buttons without completing those requests.
+    // Rendering starts the held latest-guess request. The score request must not
+    // start until that request finishes. Supplying a price enables the buttons.
     const view = render(<App subscribeToTicker={ticker.subscribe} />);
     await waitFor(() => {
-      expect(requests).toContainEqual({
-        url: "/api/players/player-1/score",
-        method: "GET",
-        body: undefined,
-      });
       expect(requests).toContainEqual({
         url: "/api/players/player-1/guesses?limit=1",
         method: "GET",
         body: undefined,
       });
+      expect(requests.some(({ url }) => url.endsWith("/score"))).toBe(false);
     });
     act(() => {
       ticker.emitPrice(61_000, "2026-08-22T18:00:00.000Z");
@@ -142,10 +138,9 @@ describe("App player-data synchronization", () => {
       view.queryByText("You can guess again after this round settles."),
     ).not.toBeNull();
 
-    // Finish the older initial requests with guess A already resolved. These
-    // responses must be ignored because guess B was submitted after they began.
+    // Finish the older guess request with guess A already resolved. Only after
+    // that response does the initial load request the corresponding score.
     await act(async () => {
-      staleScore.resolve(jsonResponse({ wins: 1, losses: 0, score: 1 }));
       staleGuess.resolve(
         jsonResponse([
           {
@@ -161,6 +156,19 @@ describe("App player-data synchronization", () => {
         ]),
       );
     });
+    await waitFor(() => {
+      expect(requests).toContainEqual({
+        url: "/api/players/player-1/score",
+        method: "GET",
+        body: undefined,
+      });
+    });
+
+    // Complete the old load. Both responses must be ignored because guess B was
+    // submitted after that load began.
+    await act(async () => {
+      staleScore.resolve(jsonResponse({ wins: 1, losses: 0, score: 1 }));
+    });
 
     // Guess B must still be active: its card remains visible and new guesses stay
     // disabled. Without the generation guard, guess A would clear this state.
@@ -175,6 +183,7 @@ describe("App player-data synchronization", () => {
     // the first load and resolved state on the first post-countdown reload.
     let scoreRequests = 0;
     let guessRequests = 0;
+    const playerDataRequests: Array<"guess" | "score"> = [];
     let countdownTick: (() => void) | null = null;
     const ticker = createFakeTicker();
 
@@ -202,6 +211,7 @@ describe("App player-data synchronization", () => {
         );
       }
       if (url.endsWith("/score")) {
+        playerDataRequests.push("score");
         scoreRequests++;
         return jsonResponse(
           scoreRequests === 1
@@ -210,6 +220,7 @@ describe("App player-data synchronization", () => {
         );
       }
       if (url.includes("/guesses?limit=1")) {
+        playerDataRequests.push("guess");
         guessRequests++;
         return jsonResponse(
           guessRequests === 1
@@ -252,6 +263,7 @@ describe("App player-data synchronization", () => {
     expect(view.queryByText("1s remaining")).not.toBeNull();
     expect(scoreRequests).toBe(1);
     expect(guessRequests).toBe(1);
+    expect(playerDataRequests).toEqual(["guess", "score"]);
 
     // Advance the captured countdown from one to zero, which starts the
     // authoritative player-data reload.
@@ -261,5 +273,6 @@ describe("App player-data synchronization", () => {
     expect(await view.findByText("Won")).not.toBeNull();
     expect(scoreRequests).toBe(2);
     expect(guessRequests).toBe(2);
+    expect(playerDataRequests).toEqual(["guess", "score", "guess", "score"]);
   });
 });

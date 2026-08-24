@@ -103,10 +103,8 @@ export function App({
   const loadPlayerData = useCallback(async () => {
     const requestGeneration = ++playerDataGeneration.current;
     try {
-      const [backendScore, guess] = await Promise.all([
-        getPlayerScore(),
-        getLatestGuess(),
-      ]);
+      const guess = await getLatestGuess();
+      const backendScore = await getPlayerScore();
       if (requestGeneration !== playerDataGeneration.current) return;
 
       setScore(backendScore);
