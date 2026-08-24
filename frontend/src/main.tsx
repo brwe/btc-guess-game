@@ -283,7 +283,9 @@ export function App({
       </header>
 
       <h2 className="question">
-        Where will Bitcoin be when this round settles?
+        {activeGuess
+          ? "Waiting for the market to decide…"
+          : "Will Bitcoin go up or down?"}
       </h2>
       <div className="actions">
         <button

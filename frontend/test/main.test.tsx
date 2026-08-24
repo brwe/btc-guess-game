@@ -256,10 +256,14 @@ describe("App player-data synchronization", () => {
     await waitFor(() =>
       expect((higherButton as HTMLButtonElement).disabled).toBe(false),
     );
+    expect(view.queryByText("Will Bitcoin go up or down?")).not.toBeNull();
     await act(async () => fireEvent.click(higherButton));
 
     // Before the countdown expires, the UI remains pending and no settlement
     // reload has occurred beyond the initial pair of GET requests.
+    expect(
+      view.queryByText("Waiting for the market to decide…"),
+    ).not.toBeNull();
     expect(view.queryByText("1s remaining")).not.toBeNull();
     expect(scoreRequests).toBe(1);
     expect(guessRequests).toBe(1);
