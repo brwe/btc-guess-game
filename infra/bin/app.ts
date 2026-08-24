@@ -18,5 +18,6 @@ new BtcGuessGameStack(app, "BtcGuessGameStack", {
     account,
     region,
   },
-  description: "BTC guessing game: CloudFront, S3, ECS Fargate, ALB, and RDS PostgreSQL",
+  description:
+    "BTC guessing game: CloudFront, S3, ECS Fargate, ALB, and RDS PostgreSQL",
 });

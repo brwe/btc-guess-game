@@ -1,4 +1,7 @@
-import type { PriceMessage, PriceProcessingResult } from "./priceMessageProcessor";
+import type {
+  PriceMessage,
+  PriceProcessingResult,
+} from "./priceMessageProcessor";
 
 type PriceMessageHandler = {
   process(message: PriceMessage): Promise<PriceProcessingResult>;
@@ -55,7 +58,8 @@ export class CoinbaseTickerClient {
     this.channel = options.channel ?? "ticker_batch";
     this.reconnectDelayMs = options.reconnectDelayMs ?? 1_000;
     this.priceStaleAfterMs = options.priceStaleAfterMs ?? 30_000;
-    this.createWebSocket = options.createWebSocket ?? ((url) => new WebSocket(url));
+    this.createWebSocket =
+      options.createWebSocket ?? ((url) => new WebSocket(url));
     this.logger = options.logger ?? console;
     this.now = options.now ?? Date.now;
     this.setTimeout = options.setTimeout ?? globalThis.setTimeout;
@@ -84,9 +88,11 @@ export class CoinbaseTickerClient {
   }
 
   isReady() {
-    return this.lastProcessedAtMs !== null
-      && this.socket !== null
-      && this.now() - this.lastProcessedAtMs <= this.priceStaleAfterMs;
+    return (
+      this.lastProcessedAtMs !== null &&
+      this.socket !== null &&
+      this.now() - this.lastProcessedAtMs <= this.priceStaleAfterMs
+    );
   }
 
   private connect() {
@@ -104,12 +110,16 @@ export class CoinbaseTickerClient {
     this.socket = socket;
     socket.addEventListener("open", () => {
       try {
-        socket.send(JSON.stringify({
-          type: "subscribe",
-          product_ids: [this.productId],
-          channels: [this.channel],
-        }));
-        this.logger.info(`[coinbase] requested ${this.channel} ${this.productId} subscription`);
+        socket.send(
+          JSON.stringify({
+            type: "subscribe",
+            product_ids: [this.productId],
+            channels: [this.channel],
+          }),
+        );
+        this.logger.info(
+          `[coinbase] requested ${this.channel} ${this.productId} subscription`,
+        );
       } catch (error) {
         this.logger.error("[coinbase] subscription request failed", error);
         this.disconnectAndReconnect(socket);
@@ -117,9 +127,15 @@ export class CoinbaseTickerClient {
     });
 
     socket.addEventListener("message", (event) => {
-      const controlMessage = parseControlMessage(event.data, this.productId, this.channel);
+      const controlMessage = parseControlMessage(
+        event.data,
+        this.productId,
+        this.channel,
+      );
       if (controlMessage === "subscribed") {
-        this.logger.info(`[coinbase] subscribed to ${this.channel} ${this.productId}`);
+        this.logger.info(
+          `[coinbase] subscribed to ${this.channel} ${this.productId}`,
+        );
         return;
       }
       if (controlMessage instanceof Error) {
@@ -141,7 +157,9 @@ export class CoinbaseTickerClient {
       this.socket = null;
       this.lastProcessedAtMs = null;
       if (!this.running) return;
-      this.logger.warn(`[coinbase] disconnected; reconnecting in ${this.reconnectDelayMs}ms`);
+      this.logger.warn(
+        `[coinbase] disconnected; reconnecting in ${this.reconnectDelayMs}ms`,
+      );
       this.scheduleReconnect();
     });
   }
@@ -156,7 +174,11 @@ export class CoinbaseTickerClient {
 
     this.processing = this.processing
       .then(async () => {
-        if (this.lastObservedAtMs !== null && observedAtMs <= this.lastObservedAtMs) return;
+        if (
+          this.lastObservedAtMs !== null &&
+          observedAtMs <= this.lastObservedAtMs
+        )
+          return;
         await this.priceMessageHandler.process({ price, observedAt });
         this.lastObservedAtMs = observedAtMs;
         if (this.socket === socket) this.lastProcessedAtMs = this.now();
@@ -200,20 +222,28 @@ function parseControlMessage(
   if (!isRecord(message)) return null;
 
   if (message.type === "error") {
-    const detail = typeof message.message === "string" ? `: ${message.message}` : "";
+    const detail =
+      typeof message.message === "string" ? `: ${message.message}` : "";
     return new Error(`Coinbase rejected the subscription${detail}`);
   }
-  if (message.type !== "subscriptions" || !Array.isArray(message.channels)) return null;
+  if (message.type !== "subscriptions" || !Array.isArray(message.channels))
+    return null;
 
-  const subscribed = message.channels.some((subscription) => isRecord(subscription)
-    && (subscription.name === channel
-      || (channel === "ticker_batch" && subscription.name === "ticker_1000"))
-    && Array.isArray(subscription.product_ids)
-    && subscription.product_ids.includes(productId));
+  const subscribed = message.channels.some(
+    (subscription) =>
+      isRecord(subscription) &&
+      (subscription.name === channel ||
+        (channel === "ticker_batch" && subscription.name === "ticker_1000")) &&
+      Array.isArray(subscription.product_ids) &&
+      subscription.product_ids.includes(productId),
+  );
   return subscribed ? "subscribed" : null;
 }
 
-function parseTickerMessage(data: unknown, productId: string): CoinbaseTickerMessage | null {
+function parseTickerMessage(
+  data: unknown,
+  productId: string,
+): CoinbaseTickerMessage | null {
   if (typeof data !== "string") return null;
 
   let message: unknown;
@@ -223,17 +253,20 @@ function parseTickerMessage(data: unknown, productId: string): CoinbaseTickerMes
     return null;
   }
 
-  if (!isRecord(message)
-    || message.type !== "ticker"
-    || message.product_id !== productId
-    || typeof message.price !== "string"
-    || typeof message.time !== "string") {
+  if (
+    !isRecord(message) ||
+    message.type !== "ticker" ||
+    message.product_id !== productId ||
+    typeof message.price !== "string" ||
+    typeof message.time !== "string"
+  ) {
     return null;
   }
 
   const price = Number(message.price);
   const observedAtMs = Date.parse(message.time);
-  if (!Number.isFinite(price) || price <= 0 || Number.isNaN(observedAtMs)) return null;
+  if (!Number.isFinite(price) || price <= 0 || Number.isNaN(observedAtMs))
+    return null;
 
   return message as CoinbaseTickerMessage;
 }

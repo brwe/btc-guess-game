@@ -30,9 +30,8 @@ class FakeWebSocket {
   }
 
   emit(type: string, data?: string) {
-    const event = data === undefined
-      ? new Event(type)
-      : new MessageEvent(type, { data });
+    const event =
+      data === undefined ? new Event(type) : new MessageEvent(type, { data });
     for (const listener of this.listeners.get(type) ?? []) listener(event);
   }
 }
@@ -46,47 +45,62 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.WebSocket = originalWebSocket;
-  delete (document as Document & { visibilityState?: DocumentVisibilityState }).visibilityState;
+  delete (document as Document & { visibilityState?: DocumentVisibilityState })
+    .visibilityState;
 });
 
 describe("subscribeToCoinbaseTicker", () => {
   test("subscribes to the BTC-USD ticker and forwards valid prices", () => {
     const prices: CoinbasePrice[] = [];
-    const unsubscribe = subscribeToCoinbaseTicker({
-      onPrice(price) { prices.push(price); },
-      onDisconnect() {},
-    }, {
-      staleCheckIntervalMs: 60_000,
-    });
+    const unsubscribe = subscribeToCoinbaseTicker(
+      {
+        onPrice(price) {
+          prices.push(price);
+        },
+        onDisconnect() {},
+      },
+      {
+        staleCheckIntervalMs: 60_000,
+      },
+    );
     const socket = FakeWebSocket.instances[0]!;
 
     socket.emit("open");
     socket.emit("message", tickerMessage("61000"));
 
-    expect(socket.sent).toEqual([JSON.stringify({
-      type: "subscribe",
-      product_ids: ["BTC-USD"],
-      channels: ["ticker"],
-    })]);
-    expect(prices).toEqual([{
-      pair: "BTC/USD",
-      price: 61_000,
-      observedAt: "2026-08-24T12:00:00.000Z",
-    }]);
+    expect(socket.sent).toEqual([
+      JSON.stringify({
+        type: "subscribe",
+        product_ids: ["BTC-USD"],
+        channels: ["ticker"],
+      }),
+    ]);
+    expect(prices).toEqual([
+      {
+        pair: "BTC/USD",
+        price: 61_000,
+        observedAt: "2026-08-24T12:00:00.000Z",
+      },
+    ]);
     unsubscribe();
   });
 
   test("reconnects a stale connection when a background tab becomes visible", () => {
     let now = 1_000;
     let disconnects = 0;
-    const unsubscribe = subscribeToCoinbaseTicker({
-      onPrice() {},
-      onDisconnect() { disconnects += 1; },
-    }, {
-      now: () => now,
-      staleAfterMs: 30_000,
-      staleCheckIntervalMs: 60_000,
-    });
+    const unsubscribe = subscribeToCoinbaseTicker(
+      {
+        onPrice() {},
+        onDisconnect() {
+          disconnects += 1;
+        },
+      },
+      {
+        now: () => now,
+        staleAfterMs: 30_000,
+        staleCheckIntervalMs: 60_000,
+      },
+    );
     const firstSocket = FakeWebSocket.instances[0]!;
     firstSocket.emit("message", tickerMessage("61000"));
 
@@ -105,13 +119,18 @@ describe("subscribeToCoinbaseTicker", () => {
 
   test("reconnects after a websocket error", async () => {
     let disconnects = 0;
-    const unsubscribe = subscribeToCoinbaseTicker({
-      onPrice() {},
-      onDisconnect() { disconnects += 1; },
-    }, {
-      reconnectDelayMs: 1,
-      staleCheckIntervalMs: 60_000,
-    });
+    const unsubscribe = subscribeToCoinbaseTicker(
+      {
+        onPrice() {},
+        onDisconnect() {
+          disconnects += 1;
+        },
+      },
+      {
+        reconnectDelayMs: 1,
+        staleCheckIntervalMs: 60_000,
+      },
+    );
     const firstSocket = FakeWebSocket.instances[0]!;
 
     firstSocket.emit("error");
@@ -124,12 +143,15 @@ describe("subscribeToCoinbaseTicker", () => {
   });
 
   test("reconnects immediately when the browser comes back online", () => {
-    const unsubscribe = subscribeToCoinbaseTicker({
-      onPrice() {},
-      onDisconnect() {},
-    }, {
-      staleCheckIntervalMs: 60_000,
-    });
+    const unsubscribe = subscribeToCoinbaseTicker(
+      {
+        onPrice() {},
+        onDisconnect() {},
+      },
+      {
+        staleCheckIntervalMs: 60_000,
+      },
+    );
     const firstSocket = FakeWebSocket.instances[0]!;
 
     window.dispatchEvent(new Event("online"));

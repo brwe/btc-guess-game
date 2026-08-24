@@ -15,14 +15,17 @@ export class PriceMessageProcessor {
   constructor(
     private readonly guessRepository: Pick<GuessRepository, "resolveEligible">,
     private readonly latestPriceStore: LatestPriceWriter,
-  ) { }
+  ) {}
 
   async process(message: PriceMessage): Promise<PriceProcessingResult> {
     if (!Number.isFinite(message.price) || message.price <= 0) {
       throw new Error("price must be a positive number");
     }
 
-    if (!(message.observedAt instanceof Date) || Number.isNaN(message.observedAt.getTime())) {
+    if (
+      !(message.observedAt instanceof Date) ||
+      Number.isNaN(message.observedAt.getTime())
+    ) {
       throw new Error("observedAt must be a valid Date");
     }
 

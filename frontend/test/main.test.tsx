@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  waitFor,
+} from "@testing-library/react";
 import { App } from "../src/main";
 import { subscribeToCoinbaseTicker } from "../src/coinbaseTicker";
 import type { CoinbasePrice } from "../src/coinbaseTicker";
@@ -37,7 +43,9 @@ function createFakeTicker() {
   let priceHandler: ((price: CoinbasePrice) => void) | null = null;
   const subscribe: typeof subscribeToCoinbaseTicker = ({ onPrice }) => {
     priceHandler = onPrice;
-    return () => { priceHandler = null; };
+    return () => {
+      priceHandler = null;
+    };
   };
 
   return {
@@ -69,13 +77,16 @@ describe("App player-data synchronization", () => {
         body: init?.body ? JSON.parse(String(init.body)) : undefined,
       });
       if (url === "/api/guesses" && init?.method === "POST") {
-        return jsonResponse({
-          guessId: "guess-b",
-          status: "pending",
-          entryPrice: 61_000,
-          resolveAfter: "2026-08-22T18:01:00.000Z",
-          remainingSeconds: 60,
-        }, 201);
+        return jsonResponse(
+          {
+            guessId: "guess-b",
+            status: "pending",
+            entryPrice: 61_000,
+            resolveAfter: "2026-08-22T18:01:00.000Z",
+            remainingSeconds: 60,
+          },
+          201,
+        );
       }
       if (url.endsWith("/score")) return await staleScore.promise;
       if (url.includes("/guesses?limit=1")) return await staleGuess.promise;
@@ -106,7 +117,9 @@ describe("App player-data synchronization", () => {
 
     // Submit guess B while the older score and guess-A requests are still pending.
     const upButton = await view.findByRole("button", { name: "↑ Higher" });
-    await waitFor(() => expect((upButton as HTMLButtonElement).disabled).toBe(false));
+    await waitFor(() =>
+      expect((upButton as HTMLButtonElement).disabled).toBe(false),
+    );
     await act(async () => fireEvent.click(upButton));
     expect(requests).toContainEqual({
       url: "/api/guesses",
@@ -125,22 +138,28 @@ describe("App player-data synchronization", () => {
       ticker.emitPrice(61_012.34, "2026-08-22T18:00:01.000Z");
     });
     expect(await view.findByText("↑ $12.34")).not.toBeNull();
-    expect(view.queryByText("You can guess again after this round settles.")).not.toBeNull();
+    expect(
+      view.queryByText("You can guess again after this round settles."),
+    ).not.toBeNull();
 
     // Finish the older initial requests with guess A already resolved. These
     // responses must be ignored because guess B was submitted after they began.
     await act(async () => {
       staleScore.resolve(jsonResponse({ wins: 1, losses: 0, score: 1 }));
-      staleGuess.resolve(jsonResponse([{
-        guessId: "guess-a",
-        direction: "up",
-        entryPrice: 60_000,
-        status: "resolved",
-        resolveAfter: "2026-08-22T17:59:00.000Z",
-        resolvedPrice: 61_000,
-        result: "won",
-        remainingSeconds: 0,
-      }]));
+      staleGuess.resolve(
+        jsonResponse([
+          {
+            guessId: "guess-a",
+            direction: "up",
+            entryPrice: 60_000,
+            status: "resolved",
+            resolveAfter: "2026-08-22T17:59:00.000Z",
+            resolvedPrice: 61_000,
+            result: "won",
+            remainingSeconds: 0,
+          },
+        ]),
+      );
     });
 
     // Guess B must still be active: its card remains visible and new guesses stay
@@ -171,32 +190,43 @@ describe("App player-data synchronization", () => {
     globalThis.fetch = (async (input, init) => {
       const url = String(input);
       if (url === "/api/guesses" && init?.method === "POST") {
-        return jsonResponse({
-          guessId: "guess-1",
-          status: "pending",
-          entryPrice: 61_000,
-          resolveAfter: "2026-08-22T18:01:00.000Z",
-          remainingSeconds: 1,
-        }, 201);
+        return jsonResponse(
+          {
+            guessId: "guess-1",
+            status: "pending",
+            entryPrice: 61_000,
+            resolveAfter: "2026-08-22T18:01:00.000Z",
+            remainingSeconds: 1,
+          },
+          201,
+        );
       }
       if (url.endsWith("/score")) {
         scoreRequests++;
-        return jsonResponse(scoreRequests === 1
-          ? { wins: 0, losses: 0, score: 0 }
-          : { wins: 1, losses: 0, score: 1 });
+        return jsonResponse(
+          scoreRequests === 1
+            ? { wins: 0, losses: 0, score: 0 }
+            : { wins: 1, losses: 0, score: 1 },
+        );
       }
       if (url.includes("/guesses?limit=1")) {
         guessRequests++;
-        return jsonResponse(guessRequests === 1 ? [] : [{
-          guessId: "guess-1",
-          direction: "up",
-          entryPrice: 61_000,
-          status: "resolved",
-          resolveAfter: "2026-08-22T18:01:00.000Z",
-          resolvedPrice: 61_010,
-          result: "won",
-          remainingSeconds: 0,
-        }]);
+        return jsonResponse(
+          guessRequests === 1
+            ? []
+            : [
+                {
+                  guessId: "guess-1",
+                  direction: "up",
+                  entryPrice: 61_000,
+                  status: "resolved",
+                  resolveAfter: "2026-08-22T18:01:00.000Z",
+                  resolvedPrice: 61_010,
+                  result: "won",
+                  remainingSeconds: 0,
+                },
+              ],
+        );
       }
       throw new Error(`unexpected request: ${url}`);
     }) as typeof fetch;
@@ -212,7 +242,9 @@ describe("App player-data synchronization", () => {
 
     // Submit a guess whose server-provided countdown starts at one second.
     const higherButton = await view.findByRole("button", { name: "↑ Higher" });
-    await waitFor(() => expect((higherButton as HTMLButtonElement).disabled).toBe(false));
+    await waitFor(() =>
+      expect((higherButton as HTMLButtonElement).disabled).toBe(false),
+    );
     await act(async () => fireEvent.click(higherButton));
 
     // Before the countdown expires, the UI remains pending and no settlement

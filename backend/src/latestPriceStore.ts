@@ -11,7 +11,9 @@ export interface LatestPriceWriter {
   set(latestPrice: LatestPrice): void;
 }
 
-export class InMemoryLatestPriceStore implements LatestPriceLocalStore, LatestPriceWriter {
+export class InMemoryLatestPriceStore
+  implements LatestPriceLocalStore, LatestPriceWriter
+{
   private latestPrice: LatestPrice | null = null;
 
   get() {

@@ -16,7 +16,10 @@ describe("PriceMessageProcessor", () => {
         return resolvedGuesses;
       },
     };
-    const processor = new PriceMessageProcessor(repository, new InMemoryLatestPriceStore());
+    const processor = new PriceMessageProcessor(
+      repository,
+      new InMemoryLatestPriceStore(),
+    );
     const observedAt = new Date("2026-08-21T12:01:00.000Z");
 
     const result = await processor.process({ price: 62_000, observedAt });
@@ -30,11 +33,14 @@ describe("PriceMessageProcessor", () => {
 
   test("stores the latest valid price message", async () => {
     const latestPriceStore = new InMemoryLatestPriceStore();
-    const processor = new PriceMessageProcessor({
-      async resolveEligible() {
-        return [];
+    const processor = new PriceMessageProcessor(
+      {
+        async resolveEligible() {
+          return [];
+        },
       },
-    }, latestPriceStore);
+      latestPriceStore,
+    );
     const message = {
       price: 62_000,
       observedAt: new Date("2026-08-21T12:01:00.000Z"),
@@ -48,25 +54,33 @@ describe("PriceMessageProcessor", () => {
   test.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
     "rejects invalid price %p",
     async (price) => {
-      const processor = new PriceMessageProcessor({
-        async resolveEligible() {
-          throw new Error("repository should not be called");
+      const processor = new PriceMessageProcessor(
+        {
+          async resolveEligible() {
+            throw new Error("repository should not be called");
+          },
         },
-      }, new InMemoryLatestPriceStore());
+        new InMemoryLatestPriceStore(),
+      );
 
-      await expect(processor.process({ price, observedAt: new Date() }))
-        .rejects.toThrow("price must be a positive number");
+      await expect(
+        processor.process({ price, observedAt: new Date() }),
+      ).rejects.toThrow("price must be a positive number");
     },
   );
 
   test("rejects an invalid observation timestamp", async () => {
-    const processor = new PriceMessageProcessor({
-      async resolveEligible() {
-        throw new Error("repository should not be called");
+    const processor = new PriceMessageProcessor(
+      {
+        async resolveEligible() {
+          throw new Error("repository should not be called");
+        },
       },
-    }, new InMemoryLatestPriceStore());
+      new InMemoryLatestPriceStore(),
+    );
 
-    await expect(processor.process({ price: 62_000, observedAt: new Date("invalid") }))
-      .rejects.toThrow("observedAt must be a valid Date");
+    await expect(
+      processor.process({ price: 62_000, observedAt: new Date("invalid") }),
+    ).rejects.toThrow("observedAt must be a valid Date");
   });
 });

@@ -12,8 +12,6 @@ If the guess is correct (up = price went higher, down = price went lower), the u
 Players can only make one guess at a time.
 New players start with a score of 0.
 
-
-
 ## Run locally
 
 uses docker compose to start up locally.
@@ -51,7 +49,6 @@ make backend-integration-test
 
 ## Deploy to AWS
 
-
 ### AWS credentials
 
 ```bash
@@ -68,7 +65,7 @@ bun run synth
 bun run deploy
 ```
 
-The deployment outputs `ApplicationUrl`. 
+The deployment outputs `ApplicationUrl`.
 
 ### Destroy
 
@@ -76,7 +73,6 @@ The deployment outputs `ApplicationUrl`.
 cd infra
 bun run destroy
 ```
-
 
 ## Architecture
 
@@ -97,6 +93,7 @@ Frontend                    Backend                     Coinbase
    │  BTC/USD price [WS]       │                           │
    │◄──────────────────────────────────────────────────────┤
 ```
+
 Both the frontend and backend independently subscribe to the Coinbase WebSocket ticker. The frontend connection is used only to display the live price. The backend connection remains authoritative for entry prices and guess resolution. This avoids relaying every price update through the application's AWS infrastructure.
 
 ### Guess lifecycle
@@ -132,7 +129,6 @@ The backend resolves guesses as follows: Whenever a new price update arrives, it
 
 After the countdown reaches zero, the frontend checks the authoritative state through REST every two seconds until the guess is resolved. The frontend is not involved in the logic for resolving guesses.
 
-
 ### AWS request path
 
 ```text
@@ -154,14 +150,10 @@ CloudFront
                          private RDS
 ```
 
-
-
-
-
 ## Limitations
 
 This is a pet project written for an application process.
 
-**No database migrations.** The `guesses` table that stores current guesses can be recreated with `RESET_DATABASE_ON_START=true` but there is no proper handling of schema updates. 
+**No database migrations.** The `guesses` table that stores current guesses can be recreated with `RESET_DATABASE_ON_START=true` but there is no proper handling of schema updates.
 
 **The current design allows for only one backend instance** In more than one backend instance all instances would consume the price stream and update the guesses. Conditional updates inside a transaction can be used to preserve correctness, but the duplicated queries still waste database capacity. For horizontal scaling, we could for example have dedicated workers that work on disjoint batches.

@@ -1,13 +1,20 @@
 import { describe, expect, test } from "bun:test";
 import { createApi } from "../src/api";
 import { PendingGuessConflictError } from "../src/guessRepository";
-import type { GuessRepository, GuessRow, NewGuess } from "../src/guessRepository";
+import type {
+  GuessRepository,
+  GuessRow,
+  NewGuess,
+} from "../src/guessRepository";
 import { InMemoryLatestPriceStore } from "../src/latestPriceStore";
 
 const guessId = "6c3a2fc2-bcf5-4f5f-a755-21d91ff21973";
 const createdAt = new Date("2026-08-19T10:00:00.000Z");
 const latestPrice = 59_321.25;
-type ApiGuessRepository = Pick<GuessRepository, "insert" | "findPlayerGuesses" | "getPlayerScore">;
+type ApiGuessRepository = Pick<
+  GuessRepository,
+  "insert" | "findPlayerGuesses" | "getPlayerScore"
+>;
 
 function unexpectedRepositoryCall(method: keyof ApiGuessRepository): never {
   throw new Error(`Unexpected repository call: ${method}`);
@@ -17,9 +24,15 @@ function createRepositoryStub(
   overrides: Partial<ApiGuessRepository> = {},
 ): ApiGuessRepository {
   return {
-    async insert() { return unexpectedRepositoryCall("insert"); },
-    async findPlayerGuesses() { return unexpectedRepositoryCall("findPlayerGuesses"); },
-    async getPlayerScore() { return unexpectedRepositoryCall("getPlayerScore"); },
+    async insert() {
+      return unexpectedRepositoryCall("insert");
+    },
+    async findPlayerGuesses() {
+      return unexpectedRepositoryCall("findPlayerGuesses");
+    },
+    async getPlayerScore() {
+      return unexpectedRepositoryCall("getPlayerScore");
+    },
     ...overrides,
   };
 }
@@ -83,7 +96,10 @@ function createTestContext(existingRows: GuessRow[] = []) {
     async findPlayerGuesses(playerId, limit) {
       return rows
         .filter((row) => row.player_id === playerId)
-        .sort((left, right) => right.resolve_after.getTime() - left.resolve_after.getTime())
+        .sort(
+          (left, right) =>
+            right.resolve_after.getTime() - left.resolve_after.getTime(),
+        )
         .slice(0, limit);
     },
   });
@@ -114,14 +130,16 @@ describe("POST /api/guesses", () => {
       resolveAfter: "2026-08-19T10:01:00.000Z",
       remainingSeconds: 60,
     });
-    expect(inserted).toEqual([{
-      id: guessId,
-      playerId: "player-1",
-      direction: "up",
-      entryPrice: latestPrice,
-      createdAt,
-      resolveAfter: new Date("2026-08-19T10:01:00.000Z"),
-    }]);
+    expect(inserted).toEqual([
+      {
+        id: guessId,
+        playerId: "player-1",
+        direction: "up",
+        entryPrice: latestPrice,
+        createdAt,
+        resolveAfter: new Date("2026-08-19T10:01:00.000Z"),
+      },
+    ]);
   });
 
   test("returns 409 when the repository reports a pending-guess conflict", async () => {
@@ -135,7 +153,9 @@ describe("POST /api/guesses", () => {
       ...createRequiredApiDependencies(),
       guessRepository: createRepositoryStub({
         async insert(guess) {
-          if (inserted.some((existing) => existing.playerId === guess.playerId)) {
+          if (
+            inserted.some((existing) => existing.playerId === guess.playerId)
+          ) {
             throw new PendingGuessConflictError();
           }
 
@@ -145,22 +165,27 @@ describe("POST /api/guesses", () => {
       createId: () => guessIds[nextGuessId++]!,
       now: () => createdAt,
     });
-    const registerGuess = (direction: "up" | "down") => app.request("/api/guesses", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        direction,
-        playerId: "player-1",
-      }),
-    });
+    const registerGuess = (direction: "up" | "down") =>
+      app.request("/api/guesses", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          direction,
+          playerId: "player-1",
+        }),
+      });
 
     const responses = await Promise.all([
       registerGuess("up"),
       registerGuess("down"),
     ]);
 
-    expect(responses.map((response) => response.status).sort()).toEqual([201, 409]);
-    const conflictResponse = responses.find((response) => response.status === 409);
+    expect(responses.map((response) => response.status).sort()).toEqual([
+      201, 409,
+    ]);
+    const conflictResponse = responses.find(
+      (response) => response.status === 409,
+    );
     expect(await conflictResponse?.json()).toEqual({
       error: "player already has a pending guess",
     });
@@ -185,10 +210,12 @@ describe("POST /api/guesses", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ direction: "up", playerId: "player-1" }),
     });
-    const body = await response.json() as { guessId: string };
+    const body = (await response.json()) as { guessId: string };
 
     expect(response.status).toBe(201);
-    expect(body.guessId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    expect(body.guessId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
     expect(inserted[0]?.id).toBe(body.guessId);
   });
 
@@ -220,7 +247,9 @@ describe("POST /api/guesses", () => {
       resolveAfter: "2026-08-19T10:00:05.000Z",
       remainingSeconds: 5,
     });
-    expect(inserted[0]?.resolveAfter).toEqual(new Date("2026-08-19T10:00:05.000Z"));
+    expect(inserted[0]?.resolveAfter).toEqual(
+      new Date("2026-08-19T10:00:05.000Z"),
+    );
   });
 
   test("ignores a client-supplied entry price", async () => {
@@ -241,10 +270,19 @@ describe("POST /api/guesses", () => {
   });
 
   test.each([
-    [{ direction: "sideways", playerId: "player-1" }, "direction must be 'up' or 'down'"],
+    [
+      { direction: "sideways", playerId: "player-1" },
+      "direction must be 'up' or 'down'",
+    ],
     [{ direction: "down" }, "playerId must be a non-empty string"],
-    [{ direction: "down", playerId: "   " }, "playerId must be a non-empty string"],
-    [{ direction: "down", playerId: 123 }, "playerId must be a non-empty string"],
+    [
+      { direction: "down", playerId: "   " },
+      "playerId must be a non-empty string",
+    ],
+    [
+      { direction: "down", playerId: 123 },
+      "playerId must be a non-empty string",
+    ],
   ])("rejects invalid input", async (body, error) => {
     const { app, inserted } = createTestContext();
     const response = await app.request("/api/guesses", {
@@ -276,7 +314,9 @@ describe("POST /api/guesses", () => {
     const app = createApi({
       ...createRequiredApiDependencies(latestPriceStore),
       guessRepository: createRepositoryStub({
-        async insert(guess) { inserted.push(guess); },
+        async insert(guess) {
+          inserted.push(guess);
+        },
       }),
     });
 
@@ -299,7 +339,9 @@ describe("POST /api/guesses", () => {
       ...createRequiredApiDependencies(),
       isReady: () => false,
       guessRepository: createRepositoryStub({
-        async insert(guess) { inserted.push(guess); },
+        async insert(guess) {
+          inserted.push(guess);
+        },
       }),
     });
 
@@ -356,19 +398,21 @@ describe("GET /api/players/:playerId/guesses", () => {
 
     const response = await app.request("/api/players/player-1/guesses?limit=1");
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual([{
-      guessId,
-      playerId: "player-1",
-      direction: "down",
-      entryPrice: latestPrice,
-      status: "pending",
-      createdAt: "2026-08-19T10:00:00.000Z",
-      resolveAfter: "2026-08-19T10:01:00.000Z",
-      resolvedAt: null,
-      resolvedPrice: null,
-      result: null,
-      remainingSeconds: 60,
-    }]);
+    expect(await response.json()).toEqual([
+      {
+        guessId,
+        playerId: "player-1",
+        direction: "down",
+        entryPrice: latestPrice,
+        status: "pending",
+        createdAt: "2026-08-19T10:00:00.000Z",
+        resolveAfter: "2026-08-19T10:01:00.000Z",
+        resolvedAt: null,
+        resolvedPrice: null,
+        result: null,
+        remainingSeconds: 60,
+      },
+    ]);
   });
 
   test("returns the backend-computed result", async () => {
@@ -397,9 +441,11 @@ describe("GET /api/players/:playerId/guesses", () => {
     const response = await app.request("/api/players/player-1/guesses?limit=1");
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual([expect.objectContaining({
-      result: "won",
-    })]);
+    expect(await response.json()).toEqual([
+      expect.objectContaining({
+        result: "won",
+      }),
+    ]);
   });
 
   test("returns an empty collection when the player has no guesses", async () => {
@@ -410,15 +456,20 @@ describe("GET /api/players/:playerId/guesses", () => {
     expect(await response.json()).toEqual([]);
   });
 
-  test.each(["0", "101", "1.5", "invalid"])('rejects invalid limit "%s"', async (limit) => {
-    const { app } = createTestContext();
-    const response = await app.request(`/api/players/player-1/guesses?limit=${limit}`);
+  test.each(["0", "101", "1.5", "invalid"])(
+    'rejects invalid limit "%s"',
+    async (limit) => {
+      const { app } = createTestContext();
+      const response = await app.request(
+        `/api/players/player-1/guesses?limit=${limit}`,
+      );
 
-    expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({
-      error: "limit must be an integer between 1 and 100",
-    });
-  });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({
+        error: "limit must be an integer between 1 and 100",
+      });
+    },
+  );
 });
 
 describe("GET /api/players/:playerId/score", () => {

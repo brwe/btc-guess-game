@@ -6,9 +6,15 @@ import type { PriceMessage } from "../src/priceMessageProcessor";
 class FakeWebSocket {
   readonly sent: string[] = [];
   closed = false;
-  private readonly listeners = new Map<string, Array<(event: { data?: unknown }) => void>>();
+  private readonly listeners = new Map<
+    string,
+    Array<(event: { data?: unknown }) => void>
+  >();
 
-  addEventListener(type: string, listener: (event: { data?: unknown }) => void) {
+  addEventListener(
+    type: string,
+    listener: (event: { data?: unknown }) => void,
+  ) {
     const listeners = this.listeners.get(type) ?? [];
     listeners.push(listener);
     this.listeners.set(type, listeners);
@@ -30,26 +36,32 @@ class FakeWebSocket {
 function createContext(channel?: CoinbaseTickerChannel) {
   const messages: PriceMessage[] = [];
   const socket = new FakeWebSocket();
-  const client = new CoinbaseTickerClient({
-    async process(message) {
-      messages.push(message);
-      return { resolvedCount: 0, resolvedGuessIds: [] };
+  const client = new CoinbaseTickerClient(
+    {
+      async process(message) {
+        messages.push(message);
+        return { resolvedCount: 0, resolvedGuessIds: [] };
+      },
     },
-  }, {
-    createWebSocket: () => socket as unknown as WebSocket,
-    channel,
-    logger: { info() {}, warn() {}, error() {} },
-  });
+    {
+      createWebSocket: () => socket as unknown as WebSocket,
+      channel,
+      logger: { info() {}, warn() {}, error() {} },
+    },
+  );
 
   return { client, messages, socket };
 }
 
 function confirmSubscription(socket: FakeWebSocket) {
   socket.emit("open");
-  socket.emit("message", JSON.stringify({
-    type: "subscriptions",
-    channels: [{ name: "ticker_1000", product_ids: ["BTC-USD"] }],
-  }));
+  socket.emit(
+    "message",
+    JSON.stringify({
+      type: "subscriptions",
+      channels: [{ name: "ticker_1000", product_ids: ["BTC-USD"] }],
+    }),
+  );
 }
 
 describe("CoinbaseTickerClient", () => {
@@ -70,15 +82,20 @@ describe("CoinbaseTickerClient", () => {
     client.start();
     socket.emit("open");
 
-    expect(socket.sent).toEqual([JSON.stringify({
-      type: "subscribe",
-      product_ids: ["BTC-USD"],
-      channels: ["ticker_batch"],
-    })]);
-    socket.emit("message", JSON.stringify({
-      type: "subscriptions",
-      channels: [{ name: "ticker_1000", product_ids: ["BTC-USD"] }],
-    }));
+    expect(socket.sent).toEqual([
+      JSON.stringify({
+        type: "subscribe",
+        product_ids: ["BTC-USD"],
+        channels: ["ticker_batch"],
+      }),
+    ]);
+    socket.emit(
+      "message",
+      JSON.stringify({
+        type: "subscriptions",
+        channels: [{ name: "ticker_1000", product_ids: ["BTC-USD"] }],
+      }),
+    );
     client.stop();
   });
 
@@ -88,15 +105,20 @@ describe("CoinbaseTickerClient", () => {
     client.start();
     socket.emit("open");
 
-    expect(socket.sent).toEqual([JSON.stringify({
-      type: "subscribe",
-      product_ids: ["BTC-USD"],
-      channels: ["ticker"],
-    })]);
-    socket.emit("message", JSON.stringify({
-      type: "subscriptions",
-      channels: [{ name: "ticker", product_ids: ["BTC-USD"] }],
-    }));
+    expect(socket.sent).toEqual([
+      JSON.stringify({
+        type: "subscribe",
+        product_ids: ["BTC-USD"],
+        channels: ["ticker"],
+      }),
+    ]);
+    socket.emit(
+      "message",
+      JSON.stringify({
+        type: "subscriptions",
+        channels: [{ name: "ticker", product_ids: ["BTC-USD"] }],
+      }),
+    );
     client.stop();
   });
 
@@ -105,18 +127,23 @@ describe("CoinbaseTickerClient", () => {
     client.start();
     confirmSubscription(socket);
 
-    socket.emit("message", JSON.stringify({
-      type: "ticker",
-      product_id: "BTC-USD",
-      price: "62345.67",
-      time: "2026-08-21T12:00:00.123Z",
-    }));
+    socket.emit(
+      "message",
+      JSON.stringify({
+        type: "ticker",
+        product_id: "BTC-USD",
+        price: "62345.67",
+        time: "2026-08-21T12:00:00.123Z",
+      }),
+    );
     await client.waitForIdle();
 
-    expect(messages).toEqual([{
-      price: 62_345.67,
-      observedAt: new Date("2026-08-21T12:00:00.123Z"),
-    }]);
+    expect(messages).toEqual([
+      {
+        price: 62_345.67,
+        observedAt: new Date("2026-08-21T12:00:00.123Z"),
+      },
+    ]);
     client.stop();
   });
 
@@ -125,32 +152,46 @@ describe("CoinbaseTickerClient", () => {
     client.start();
     confirmSubscription(socket);
 
-    socket.emit("message", JSON.stringify({ type: "subscriptions", channels: [] }));
+    socket.emit(
+      "message",
+      JSON.stringify({ type: "subscriptions", channels: [] }),
+    );
     socket.emit("message", "not JSON");
-    socket.emit("message", JSON.stringify({
-      type: "ticker",
-      product_id: "ETH-USD",
-      price: "2000",
-      time: "2026-08-21T12:00:00.000Z",
-    }));
-    socket.emit("message", JSON.stringify({
-      type: "ticker",
-      product_id: "BTC-USD",
-      price: "62000",
-      time: "2026-08-21T12:00:05.000Z",
-    }));
-    socket.emit("message", JSON.stringify({
-      type: "ticker",
-      product_id: "BTC-USD",
-      price: "61000",
-      time: "2026-08-21T12:00:00.000Z",
-    }));
+    socket.emit(
+      "message",
+      JSON.stringify({
+        type: "ticker",
+        product_id: "ETH-USD",
+        price: "2000",
+        time: "2026-08-21T12:00:00.000Z",
+      }),
+    );
+    socket.emit(
+      "message",
+      JSON.stringify({
+        type: "ticker",
+        product_id: "BTC-USD",
+        price: "62000",
+        time: "2026-08-21T12:00:05.000Z",
+      }),
+    );
+    socket.emit(
+      "message",
+      JSON.stringify({
+        type: "ticker",
+        product_id: "BTC-USD",
+        price: "61000",
+        time: "2026-08-21T12:00:00.000Z",
+      }),
+    );
     await client.waitForIdle();
 
-    expect(messages).toEqual([{
-      price: 62_000,
-      observedAt: new Date("2026-08-21T12:00:05.000Z"),
-    }]);
+    expect(messages).toEqual([
+      {
+        price: 62_000,
+        observedAt: new Date("2026-08-21T12:00:05.000Z"),
+      },
+    ]);
     client.stop();
   });
 
@@ -167,24 +208,27 @@ describe("CoinbaseTickerClient", () => {
   test("reconnects after the socket closes", () => {
     const sockets: FakeWebSocket[] = [];
     const scheduledReconnects: Array<() => void> = [];
-    const client = new CoinbaseTickerClient({
-      async process() {
-        return { resolvedCount: 0, resolvedGuessIds: [] };
+    const client = new CoinbaseTickerClient(
+      {
+        async process() {
+          return { resolvedCount: 0, resolvedGuessIds: [] };
+        },
       },
-    }, {
-      reconnectDelayMs: 1,
-      setTimeout: ((callback: TimerHandler) => {
-        scheduledReconnects.push(callback as () => void);
-        return 1 as unknown as ReturnType<typeof setTimeout>;
-      }) as typeof setTimeout,
-      clearTimeout: (() => {}) as typeof clearTimeout,
-      createWebSocket: () => {
-        const socket = new FakeWebSocket();
-        sockets.push(socket);
-        return socket as unknown as WebSocket;
+      {
+        reconnectDelayMs: 1,
+        setTimeout: ((callback: TimerHandler) => {
+          scheduledReconnects.push(callback as () => void);
+          return 1 as unknown as ReturnType<typeof setTimeout>;
+        }) as typeof setTimeout,
+        clearTimeout: (() => {}) as typeof clearTimeout,
+        createWebSocket: () => {
+          const socket = new FakeWebSocket();
+          sockets.push(socket);
+          return socket as unknown as WebSocket;
+        },
+        logger: { info() {}, warn() {}, error() {} },
       },
-      logger: { info() {}, warn() {}, error() {} },
-    });
+    );
 
     client.start();
     confirmSubscription(sockets[0]!);
@@ -201,26 +245,29 @@ describe("CoinbaseTickerClient", () => {
     const sockets: FakeWebSocket[] = [];
     const scheduledReconnects: Array<() => void> = [];
     let attempts = 0;
-    const client = new CoinbaseTickerClient({
-      async process() {
-        return { resolvedCount: 0, resolvedGuessIds: [] };
+    const client = new CoinbaseTickerClient(
+      {
+        async process() {
+          return { resolvedCount: 0, resolvedGuessIds: [] };
+        },
       },
-    }, {
-      reconnectDelayMs: 1,
-      setTimeout: ((callback: TimerHandler) => {
-        scheduledReconnects.push(callback as () => void);
-        return 1 as unknown as ReturnType<typeof setTimeout>;
-      }) as typeof setTimeout,
-      clearTimeout: (() => {}) as typeof clearTimeout,
-      createWebSocket: () => {
-        attempts += 1;
-        if (attempts === 1) throw new Error("DNS lookup failed");
-        const socket = new FakeWebSocket();
-        sockets.push(socket);
-        return socket as unknown as WebSocket;
+      {
+        reconnectDelayMs: 1,
+        setTimeout: ((callback: TimerHandler) => {
+          scheduledReconnects.push(callback as () => void);
+          return 1 as unknown as ReturnType<typeof setTimeout>;
+        }) as typeof setTimeout,
+        clearTimeout: (() => {}) as typeof clearTimeout,
+        createWebSocket: () => {
+          attempts += 1;
+          if (attempts === 1) throw new Error("DNS lookup failed");
+          const socket = new FakeWebSocket();
+          sockets.push(socket);
+          return socket as unknown as WebSocket;
+        },
+        logger: { info() {}, warn() {}, error() {} },
       },
-      logger: { info() {}, warn() {}, error() {} },
-    });
+    );
 
     client.start();
 
@@ -239,12 +286,15 @@ describe("CoinbaseTickerClient", () => {
 
     expect(client.isReady()).toBe(false);
 
-    socket.emit("message", JSON.stringify({
-      type: "ticker",
-      product_id: "BTC-USD",
-      price: "62345.67",
-      time: "2026-08-21T12:00:00.123Z",
-    }));
+    socket.emit(
+      "message",
+      JSON.stringify({
+        type: "ticker",
+        product_id: "BTC-USD",
+        price: "62345.67",
+        time: "2026-08-21T12:00:00.123Z",
+      }),
+    );
     await client.waitForIdle();
 
     expect(client.isReady()).toBe(true);
@@ -255,12 +305,15 @@ describe("CoinbaseTickerClient", () => {
     const { client, socket } = createContext();
     client.start();
     confirmSubscription(socket);
-    socket.emit("message", JSON.stringify({
-      type: "ticker",
-      product_id: "BTC-USD",
-      price: "62345.67",
-      time: "2026-08-21T12:00:00.123Z",
-    }));
+    socket.emit(
+      "message",
+      JSON.stringify({
+        type: "ticker",
+        product_id: "BTC-USD",
+        price: "62345.67",
+        time: "2026-08-21T12:00:00.123Z",
+      }),
+    );
     await client.waitForIdle();
     expect(client.isReady()).toBe(true);
 
@@ -273,24 +326,30 @@ describe("CoinbaseTickerClient", () => {
   test("is not ready when the last processed price becomes stale", async () => {
     let now = 1_000;
     const socket = new FakeWebSocket();
-    const client = new CoinbaseTickerClient({
-      async process() {
-        return { resolvedCount: 0, resolvedGuessIds: [] };
+    const client = new CoinbaseTickerClient(
+      {
+        async process() {
+          return { resolvedCount: 0, resolvedGuessIds: [] };
+        },
       },
-    }, {
-      priceStaleAfterMs: 30_000,
-      now: () => now,
-      createWebSocket: () => socket as unknown as WebSocket,
-      logger: { info() {}, warn() {}, error() {} },
-    });
+      {
+        priceStaleAfterMs: 30_000,
+        now: () => now,
+        createWebSocket: () => socket as unknown as WebSocket,
+        logger: { info() {}, warn() {}, error() {} },
+      },
+    );
     client.start();
     confirmSubscription(socket);
-    socket.emit("message", JSON.stringify({
-      type: "ticker",
-      product_id: "BTC-USD",
-      price: "62345.67",
-      time: "2026-08-21T12:00:00.123Z",
-    }));
+    socket.emit(
+      "message",
+      JSON.stringify({
+        type: "ticker",
+        product_id: "BTC-USD",
+        price: "62345.67",
+        time: "2026-08-21T12:00:00.123Z",
+      }),
+    );
     await client.waitForIdle();
 
     now += 30_001;

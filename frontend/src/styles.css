@@ -18,7 +18,9 @@
   text-rendering: optimizeLegibility;
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
 body {
   min-width: 320px;
@@ -30,7 +32,9 @@ body {
   background: #f2f3f5;
 }
 
-button { font: inherit; }
+button {
+  font: inherit;
+}
 
 .game {
   width: min(100%, 520px);
@@ -98,7 +102,9 @@ h1 {
   cursor: pointer;
   font-size: var(--type-base);
   font-weight: var(--weight-medium);
-  transition: background-color 140ms ease, transform 140ms ease;
+  transition:
+    background-color 140ms ease,
+    transform 140ms ease;
 }
 
 .actions button:not(:disabled):hover {
@@ -183,10 +189,14 @@ h1 {
 }
 
 .guess-card.resolved.won .round-result,
-.guess-card .movement-up { color: var(--color-up); }
+.guess-card .movement-up {
+  color: var(--color-up);
+}
 
 .guess-card.resolved.lost .round-result,
-.guess-card .movement-down { color: var(--color-down); }
+.guess-card .movement-down {
+  color: var(--color-down);
+}
 
 .guess-card dl {
   position: absolute;
@@ -261,16 +271,22 @@ h1 {
 }
 
 @media (max-width: 520px) {
-  body { padding: 12px; }
+  body {
+    padding: 12px;
+  }
 
   .game {
     padding: 24px 20px;
     border-radius: 24px;
   }
 
-  :root { --type-price: clamp(2.2rem, 12vw, 3.2rem); }
+  :root {
+    --type-price: clamp(2.2rem, 12vw, 3.2rem);
+  }
   .guess-card,
-  .score { padding: 20px; }
+  .score {
+    padding: 20px;
+  }
 
   .guess-card dl {
     right: 20px;

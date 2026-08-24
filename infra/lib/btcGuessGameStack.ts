@@ -25,7 +25,10 @@ export class BtcGuessGameStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
 
-    const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+    const projectRoot = path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "../..",
+    );
     const vpc = new ec2.Vpc(this, "Vpc", {
       availabilityZones: [`${this.region}a`, `${this.region}b`],
       natGateways: 0,
@@ -68,7 +71,8 @@ export class BtcGuessGameStack extends Stack {
       removalPolicy: RemovalPolicy.DESTROY,
     });
 
-    if (!database.secret) throw new Error("RDS credentials secret was not created");
+    if (!database.secret)
+      throw new Error("RDS credentials secret was not created");
 
     const cluster = new ecs.Cluster(this, "Cluster", { vpc });
     const taskDefinition = new ecs.FargateTaskDefinition(this, "BackendTask", {
@@ -115,11 +119,15 @@ export class BtcGuessGameStack extends Stack {
     });
     database.connections.allowDefaultPortFrom(service);
 
-    const loadBalancer = new elbv2.ApplicationLoadBalancer(this, "LoadBalancer", {
-      vpc,
-      internetFacing: false,
-      vpcSubnets: { subnetGroupName: "origin" },
-    });
+    const loadBalancer = new elbv2.ApplicationLoadBalancer(
+      this,
+      "LoadBalancer",
+      {
+        vpc,
+        internetFacing: false,
+        vpcSubnets: { subnetGroupName: "origin" },
+      },
+    );
     const listener = loadBalancer.addListener("Http", {
       port: 80,
       open: false,
@@ -156,7 +164,8 @@ export class BtcGuessGameStack extends Stack {
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.HTTPS_ONLY,
           allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
           cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
-          originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+          originRequestPolicy:
+            cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
         },
       },
       errorResponses: [403, 404].map((httpStatus) => ({
@@ -166,21 +175,30 @@ export class BtcGuessGameStack extends Stack {
         ttl: Duration.seconds(0),
       })),
     });
-    const getVpcOriginSecurityGroup = new cr.AwsCustomResource(this, "GetVpcOriginSecurityGroup", {
-      installLatestAwsSdk: false,
-      onCreate: {
-        service: "ec2",
-        action: "describeSecurityGroups",
-        parameters: {
-          Filters: [
-            { Name: "vpc-id", Values: [vpc.vpcId] },
-            { Name: "group-name", Values: ["CloudFront-VPCOrigins-Service-SG"] },
-          ],
+    const getVpcOriginSecurityGroup = new cr.AwsCustomResource(
+      this,
+      "GetVpcOriginSecurityGroup",
+      {
+        installLatestAwsSdk: false,
+        onCreate: {
+          service: "ec2",
+          action: "describeSecurityGroups",
+          parameters: {
+            Filters: [
+              { Name: "vpc-id", Values: [vpc.vpcId] },
+              {
+                Name: "group-name",
+                Values: ["CloudFront-VPCOrigins-Service-SG"],
+              },
+            ],
+          },
+          physicalResourceId: cr.PhysicalResourceId.of(
+            "CloudFront-VPCOrigins-Service-SG",
+          ),
         },
-        physicalResourceId: cr.PhysicalResourceId.of("CloudFront-VPCOrigins-Service-SG"),
+        policy: cr.AwsCustomResourcePolicy.fromSdkCalls({ resources: ["*"] }),
       },
-      policy: cr.AwsCustomResourcePolicy.fromSdkCalls({ resources: ["*"] }),
-    });
+    );
     getVpcOriginSecurityGroup.node.addDependency(distribution);
     const vpcOriginSecurityGroup = ec2.SecurityGroup.fromSecurityGroupId(
       this,

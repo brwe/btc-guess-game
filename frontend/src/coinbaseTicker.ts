@@ -22,13 +22,14 @@ const RECONNECT_DELAY_MS = 1_000;
 const STALE_AFTER_MS = 30_000;
 const STALE_CHECK_INTERVAL_MS = 5_000;
 
-export function subscribeToCoinbaseTicker({
-  onPrice,
-  onDisconnect,
-}: CoinbaseTickerHandlers, options: CoinbaseTickerOptions = {}) {
+export function subscribeToCoinbaseTicker(
+  { onPrice, onDisconnect }: CoinbaseTickerHandlers,
+  options: CoinbaseTickerOptions = {},
+) {
   const reconnectDelayMs = options.reconnectDelayMs ?? RECONNECT_DELAY_MS;
   const staleAfterMs = options.staleAfterMs ?? STALE_AFTER_MS;
-  const staleCheckIntervalMs = options.staleCheckIntervalMs ?? STALE_CHECK_INTERVAL_MS;
+  const staleCheckIntervalMs =
+    options.staleCheckIntervalMs ?? STALE_CHECK_INTERVAL_MS;
   const now = options.now ?? Date.now;
   let stopped = false;
   let socket: WebSocket | null = null;
@@ -51,11 +52,13 @@ export function subscribeToCoinbaseTicker({
 
     connection.addEventListener("open", () => {
       try {
-        connection.send(JSON.stringify({
-          type: "subscribe",
-          product_ids: [PRODUCT_ID],
-          channels: ["ticker"],
-        }));
+        connection.send(
+          JSON.stringify({
+            type: "subscribe",
+            product_ids: [PRODUCT_ID],
+            channels: ["ticker"],
+          }),
+        );
       } catch {
         reconnect(connection);
       }
@@ -134,16 +137,23 @@ function parseTickerMessage(data: unknown): CoinbasePrice | null {
   } catch {
     return null;
   }
-  if (!isRecord(message)
-    || message.type !== "ticker"
-    || message.product_id !== PRODUCT_ID
-    || typeof message.price !== "string"
-    || typeof message.time !== "string") {
+  if (
+    !isRecord(message) ||
+    message.type !== "ticker" ||
+    message.product_id !== PRODUCT_ID ||
+    typeof message.price !== "string" ||
+    typeof message.time !== "string"
+  ) {
     return null;
   }
 
   const price = Number(message.price);
-  if (!Number.isFinite(price) || price <= 0 || Number.isNaN(Date.parse(message.time))) return null;
+  if (
+    !Number.isFinite(price) ||
+    price <= 0 ||
+    Number.isNaN(Date.parse(message.time))
+  )
+    return null;
   return {
     pair: "BTC/USD",
     price,

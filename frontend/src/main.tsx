@@ -57,10 +57,14 @@ function getPlayerId() {
 
 async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
-  const body = await response.json() as T | { error?: string };
+  const body = (await response.json()) as T | { error?: string };
 
   if (!response.ok) {
-    throw new Error("error" in body && body.error ? body.error : `Request failed: ${response.status}`);
+    throw new Error(
+      "error" in body && body.error
+        ? body.error
+        : `Request failed: ${response.status}`,
+    );
   }
 
   return body as T;
@@ -73,7 +77,9 @@ async function getPlayerScore() {
 
 async function getLatestGuess() {
   const playerId = encodeURIComponent(getPlayerId());
-  const guesses = await getJson<GuessResponse[]>(`/api/players/${playerId}/guesses?limit=1`);
+  const guesses = await getJson<GuessResponse[]>(
+    `/api/players/${playerId}/guesses?limit=1`,
+  );
   return guesses[0] ?? null;
 }
 
@@ -81,11 +87,14 @@ type AppProps = {
   subscribeToTicker?: typeof subscribeToCoinbaseTicker;
 };
 
-export function App({ subscribeToTicker = subscribeToCoinbaseTicker }: AppProps = {}) {
+export function App({
+  subscribeToTicker = subscribeToCoinbaseTicker,
+}: AppProps = {}) {
   const playerDataGeneration = useRef(0);
   const [latestPrice, setLatestPrice] = useState<PriceResponse | null>(null);
   const [activeGuess, setActiveGuess] = useState<ActiveGuess | null>(null);
-  const [lastResolvedGuess, setLastResolvedGuess] = useState<ResolvedGuess | null>(null);
+  const [lastResolvedGuess, setLastResolvedGuess] =
+    useState<ResolvedGuess | null>(null);
   const [score, setScore] = useState<Score>({ wins: 0, losses: 0, score: 0 });
   const [secondsRemaining, setSecondsRemaining] = useState(0);
   const [submitting, setSubmitting] = useState(false);
@@ -109,7 +118,11 @@ export function App({ subscribeToTicker = subscribeToCoinbaseTicker }: AppProps 
           entryPrice: guess.entryPrice,
         });
         setLastResolvedGuess(null);
-      } else if (guess && guess.resolvedPrice !== null && guess.result !== null) {
+      } else if (
+        guess &&
+        guess.resolvedPrice !== null &&
+        guess.result !== null
+      ) {
         setSecondsRemaining(0);
         setActiveGuess(null);
         setLastResolvedGuess({
@@ -127,7 +140,11 @@ export function App({ subscribeToTicker = subscribeToCoinbaseTicker }: AppProps 
       setError(null);
     } catch (requestError) {
       if (requestGeneration === playerDataGeneration.current) {
-        setError(requestError instanceof Error ? requestError.message : String(requestError));
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : String(requestError),
+        );
       }
     }
   }, []);
@@ -136,15 +153,19 @@ export function App({ subscribeToTicker = subscribeToCoinbaseTicker }: AppProps 
     void loadPlayerData();
   }, [loadPlayerData]);
 
-  useEffect(() => subscribeToTicker({
-    onPrice: (price) => {
-      setLatestPrice(price);
-      setError(null);
-    },
-    onDisconnect: () => {
-      setError("price updates disconnected; reconnecting...");
-    },
-  }), [subscribeToTicker]);
+  useEffect(
+    () =>
+      subscribeToTicker({
+        onPrice: (price) => {
+          setLatestPrice(price);
+          setError(null);
+        },
+        onDisconnect: () => {
+          setError("price updates disconnected; reconnecting...");
+        },
+      }),
+    [subscribeToTicker],
+  );
 
   useEffect(() => {
     if (!activeGuess) {
@@ -203,56 +224,82 @@ export function App({ subscribeToTicker = subscribeToCoinbaseTicker }: AppProps 
       setSecondsRemaining(result.remainingSeconds);
       setActiveGuess(guess);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : String(requestError));
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : String(requestError),
+      );
     } finally {
       setSubmitting(false);
     }
   }
 
   const waiting = submitting || activeGuess !== null;
-  const currentMove = activeGuess && latestPrice
-    ? latestPrice.price - activeGuess.entryPrice
-    : null;
-  const currentMoveLabel = currentMove === null
-    ? "Waiting for price"
-    : currentMove === 0
-      ? usdFormatter.format(0)
-      : `${currentMove > 0 ? "↑" : "↓"} ${usdFormatter.format(Math.abs(currentMove))}`;
-  const currentMoveTone = currentMove === null || currentMove === 0
-    ? ""
-    : currentMove > 0 ? "movement-up" : "movement-down";
+  const currentMove =
+    activeGuess && latestPrice
+      ? latestPrice.price - activeGuess.entryPrice
+      : null;
+  const currentMoveLabel =
+    currentMove === null
+      ? "Waiting for price"
+      : currentMove === 0
+        ? usdFormatter.format(0)
+        : `${currentMove > 0 ? "↑" : "↓"} ${usdFormatter.format(Math.abs(currentMove))}`;
+  const currentMoveTone =
+    currentMove === null || currentMove === 0
+      ? ""
+      : currentMove > 0
+        ? "movement-up"
+        : "movement-down";
   const finalMove = lastResolvedGuess
     ? lastResolvedGuess.resolvedPrice - lastResolvedGuess.entryPrice
     : null;
-  const finalMoveLabel = finalMove === null
-    ? null
-    : finalMove === 0
-      ? usdFormatter.format(0)
-      : `${finalMove > 0 ? "↑" : "↓"} ${usdFormatter.format(Math.abs(finalMove))}`;
-  const finalMoveTone = finalMove === null || finalMove === 0
-    ? ""
-    : finalMove > 0
-      ? "movement-up"
-      : "movement-down";
-  const countdownLabel = secondsRemaining > 0
-    ? `${secondsRemaining}s remaining`
-    : "Awaiting settlement";
+  const finalMoveLabel =
+    finalMove === null
+      ? null
+      : finalMove === 0
+        ? usdFormatter.format(0)
+        : `${finalMove > 0 ? "↑" : "↓"} ${usdFormatter.format(Math.abs(finalMove))}`;
+  const finalMoveTone =
+    finalMove === null || finalMove === 0
+      ? ""
+      : finalMove > 0
+        ? "movement-up"
+        : "movement-down";
+  const countdownLabel =
+    secondsRemaining > 0
+      ? `${secondsRemaining}s remaining`
+      : "Awaiting settlement";
 
   return (
     <main className="game">
       <header className="price-header">
         <div>
           <p className="label">BTC / USD</p>
-          <h1>{latestPrice ? usdFormatter.format(latestPrice.price) : "Waiting for price"}</h1>
+          <h1>
+            {latestPrice
+              ? usdFormatter.format(latestPrice.price)
+              : "Waiting for price"}
+          </h1>
         </div>
       </header>
 
-      <h2 className="question">Where will Bitcoin be when this round settles?</h2>
+      <h2 className="question">
+        Where will Bitcoin be when this round settles?
+      </h2>
       <div className="actions">
-        <button className="up" disabled={waiting || !latestPrice} onClick={() => registerGuess("up")}>
+        <button
+          className="up"
+          disabled={waiting || !latestPrice}
+          onClick={() => registerGuess("up")}
+        >
           ↑ Higher
         </button>
-        <button className="down" disabled={waiting || !latestPrice} onClick={() => registerGuess("down")}>
+        <button
+          className="down"
+          disabled={waiting || !latestPrice}
+          onClick={() => registerGuess("down")}
+        >
           ↓ Lower
         </button>
       </div>
@@ -271,7 +318,9 @@ export function App({ subscribeToTicker = subscribeToCoinbaseTicker }: AppProps 
             </div>
             <div className="current-move-block">
               <span className="current-move-label">Current move</span>
-              <strong className={`current-move ${currentMoveTone}`}>{currentMoveLabel}</strong>
+              <strong className={`current-move ${currentMoveTone}`}>
+                {currentMoveLabel}
+              </strong>
             </div>
           </div>
           <dl>
@@ -296,7 +345,9 @@ export function App({ subscribeToTicker = subscribeToCoinbaseTicker }: AppProps 
             </div>
             <div className="current-move-block">
               <span className="current-move-label">Final move</span>
-              <strong className={`current-move ${finalMoveTone}`}>{finalMoveLabel}</strong>
+              <strong className={`current-move ${finalMoveTone}`}>
+                {finalMoveLabel}
+              </strong>
             </div>
           </div>
           <p className="round-result">
@@ -322,7 +373,9 @@ export function App({ subscribeToTicker = subscribeToCoinbaseTicker }: AppProps 
         </div>
         <div className="score-record">
           <span className="score-label">Record</span>
-          <span className="score-math">{score.wins} wins − {score.losses} losses</span>
+          <span className="score-math">
+            {score.wins} wins − {score.losses} losses
+          </span>
         </div>
       </section>
 

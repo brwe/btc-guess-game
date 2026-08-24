@@ -8,7 +8,10 @@ import type { GuessRepository, GuessRow, PlayerScore } from "./guessRepository";
 import type { LatestPriceLocalStore } from "./latestPriceStore";
 
 type ApiDependencies = {
-  guessRepository: Pick<GuessRepository, "insert" | "findPlayerGuesses" | "getPlayerScore">;
+  guessRepository: Pick<
+    GuessRepository,
+    "insert" | "findPlayerGuesses" | "getPlayerScore"
+  >;
   latestPriceStore: LatestPriceLocalStore;
   isReady: () => boolean;
   guessDurationSeconds: number;
@@ -31,11 +34,14 @@ export function createApi({
 }: ApiDependencies) {
   const app = new Hono();
 
-  app.use("*", cors({
-    origin: (origin) => origin || "*",
-    allowMethods: ["GET", "POST", "OPTIONS"],
-    allowHeaders: ["Content-Type"],
-  }));
+  app.use(
+    "*",
+    cors({
+      origin: (origin) => origin || "*",
+      allowMethods: ["GET", "POST", "OPTIONS"],
+      allowHeaders: ["Content-Type"],
+    }),
+  );
 
   app.onError((error, context) => {
     if (error instanceof PendingGuessConflictError) {
@@ -50,9 +56,9 @@ export function createApi({
     return context.json({ error: "internal server error" }, 500);
   });
 
-  app.get("/health", (context) => isReady()
-    ? context.text("ok")
-    : context.text("service unavailable", 503));
+  app.get("/health", (context) =>
+    isReady() ? context.text("ok") : context.text("service unavailable", 503),
+  );
 
   app.post(
     "/api/guesses",
@@ -62,9 +68,10 @@ export function createApi({
       }
 
       const invalidField = result.error.issues[0]?.path[0];
-      const error = invalidField === "playerId"
-        ? "playerId must be a non-empty string"
-        : "direction must be 'up' or 'down'";
+      const error =
+        invalidField === "playerId"
+          ? "playerId must be a non-empty string"
+          : "direction must be 'up' or 'down'";
 
       return context.json({ error }, 400);
     }),
@@ -72,12 +79,17 @@ export function createApi({
       const body = context.req.valid("json");
       const latestPrice = latestPriceStore.get();
       if (!isReady() || !latestPrice) {
-        return context.json({ error: "authoritative price temporarily unavailable" }, 503);
+        return context.json(
+          { error: "authoritative price temporarily unavailable" },
+          503,
+        );
       }
 
       const guessId = createId();
       const createdAt = now();
-      const resolveAfter = new Date(createdAt.getTime() + guessDurationSeconds * 1_000);
+      const resolveAfter = new Date(
+        createdAt.getTime() + guessDurationSeconds * 1_000,
+      );
 
       await guessRepository.insert({
         id: guessId,
@@ -90,13 +102,16 @@ export function createApi({
 
       console.log(`[api] POST /api/guesses ${guessId}`);
 
-      return context.json({
-        guessId,
-        status: "pending" as const,
-        entryPrice: latestPrice.price,
-        resolveAfter: resolveAfter.toISOString(),
-        remainingSeconds: guessDurationSeconds,
-      }, 201);
+      return context.json(
+        {
+          guessId,
+          status: "pending" as const,
+          entryPrice: latestPrice.price,
+          resolveAfter: resolveAfter.toISOString(),
+          remainingSeconds: guessDurationSeconds,
+        },
+        201,
+      );
     },
   );
 
@@ -105,21 +120,37 @@ export function createApi({
     const rawLimit = context.req.query("limit") ?? "20";
     const limit = Number(rawLimit);
     if (!playerId) {
-      return context.json({ error: "playerId must be a non-empty string" }, 400);
+      return context.json(
+        { error: "playerId must be a non-empty string" },
+        400,
+      );
     }
-    if (!/^\d+$/.test(rawLimit) || !Number.isInteger(limit) || limit < 1 || limit > 100) {
-      return context.json({ error: "limit must be an integer between 1 and 100" }, 400);
+    if (
+      !/^\d+$/.test(rawLimit) ||
+      !Number.isInteger(limit) ||
+      limit < 1 ||
+      limit > 100
+    ) {
+      return context.json(
+        { error: "limit must be an integer between 1 and 100" },
+        400,
+      );
     }
 
     const guesses = await guessRepository.findPlayerGuesses(playerId, limit);
     const responseTime = now();
-    return context.json(guesses.map((guess) => serializeGuess(guess, responseTime)));
+    return context.json(
+      guesses.map((guess) => serializeGuess(guess, responseTime)),
+    );
   });
 
   app.get("/api/players/:playerId/score", async (context) => {
     const playerId = context.req.param("playerId").trim();
     if (!playerId) {
-      return context.json({ error: "playerId must be a non-empty string" }, 400);
+      return context.json(
+        { error: "playerId must be a non-empty string" },
+        400,
+      );
     }
 
     const score = await guessRepository.getPlayerScore(playerId);
@@ -142,25 +173,28 @@ function serializeGuess(guess: GuessRow, currentTime: Date) {
     resolvedAt: guess.resolved_at?.toISOString() ?? null,
     resolvedPrice: guess.resolved_price,
     result: getGuessResult(guess),
-    remainingSeconds: guess.status === "pending"
-      ? getRemainingSeconds(guess.resolve_after, currentTime)
-      : 0,
+    remainingSeconds:
+      guess.status === "pending"
+        ? getRemainingSeconds(guess.resolve_after, currentTime)
+        : 0,
   };
 }
 
 function getRemainingSeconds(resolveAfter: Date, currentTime: Date) {
-  return Math.max(0, Math.ceil(
-    (resolveAfter.getTime() - currentTime.getTime()) / 1_000,
-  ));
+  return Math.max(
+    0,
+    Math.ceil((resolveAfter.getTime() - currentTime.getTime()) / 1_000),
+  );
 }
 
 function getGuessResult(guess: GuessRow) {
   if (guess.status !== "resolved" || guess.resolved_price === null) return null;
 
-  const won = guess.direction === "up"
-    ? guess.resolved_price > guess.entry_price
-    : guess.resolved_price < guess.entry_price;
-  return won ? "won" as const : "lost" as const;
+  const won =
+    guess.direction === "up"
+      ? guess.resolved_price > guess.entry_price
+      : guess.resolved_price < guess.entry_price;
+  return won ? ("won" as const) : ("lost" as const);
 }
 
 function serializeScore(score: PlayerScore) {

@@ -56,11 +56,11 @@ export interface GuessRepository {
 }
 
 export class PostgresGuessRepository implements GuessRepository {
-  constructor(private readonly sql: postgres.Sql) { }
+  constructor(private readonly sql: postgres.Sql) {}
 
   async initialize({ reset = false }: { reset?: boolean } = {}) {
     if (reset) {
-      console.log("############ WARNING! guesses TABLE IS DROPPED! ")
+      console.log("############ WARNING! guesses TABLE IS DROPPED! ");
       await this.sql`
         DROP TABLE IF EXISTS guesses
       `;
@@ -178,5 +178,8 @@ function isUniqueViolation(error: unknown, constraintName: string) {
   }
 
   const postgresError = error as { code?: unknown; constraint_name?: unknown };
-  return postgresError.code === "23505" && postgresError.constraint_name === constraintName;
+  return (
+    postgresError.code === "23505" &&
+    postgresError.constraint_name === constraintName
+  );
 }
