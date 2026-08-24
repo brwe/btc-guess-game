@@ -43,7 +43,7 @@ make frontend-test
 
 ### PostgreSQL integration tests
 
-These tests require Docker. The command uses `docker-compose.test.yml` to start a dedicated test stack with its own PostgreSQL service, network, and volume. It removes all test resources afterward and does not start or modify the local development stack.
+These tests require Docker.
 
 ```bash
 make backend-integration-test
