@@ -9,13 +9,17 @@ const createdAt = new Date("2026-08-19T10:00:00.000Z");
 const latestPrice = 59_321.25;
 type ApiGuessRepository = Pick<GuessRepository, "insert" | "findPlayerGuesses" | "getPlayerScore">;
 
-function createApiGuessRepository(
+function unexpectedRepositoryCall(method: keyof ApiGuessRepository): never {
+  throw new Error(`Unexpected repository call: ${method}`);
+}
+
+function createRepositoryStub(
   overrides: Partial<ApiGuessRepository> = {},
 ): ApiGuessRepository {
   return {
-    async insert() {},
-    async findPlayerGuesses() { return []; },
-    async getPlayerScore() { return { wins: 0, losses: 0 }; },
+    async insert() { return unexpectedRepositoryCall("insert"); },
+    async findPlayerGuesses() { return unexpectedRepositoryCall("findPlayerGuesses"); },
+    async getPlayerScore() { return unexpectedRepositoryCall("getPlayerScore"); },
     ...overrides,
   };
 }
@@ -26,7 +30,7 @@ function createRequiredApiDependencies(
   return {
     latestPriceStore,
     isReady: () => true,
-    guessRepository: createApiGuessRepository(),
+    guessRepository: createRepositoryStub(),
     guessDurationSeconds: 60,
   };
 }
@@ -61,7 +65,7 @@ function createLatestPriceStore() {
 function createTestContext(existingRows: GuessRow[] = []) {
   const inserted: NewGuess[] = [];
   const rows = [...existingRows];
-  const repository = createApiGuessRepository({
+  const repository = createRepositoryStub({
     async insert(guess) {
       inserted.push(guess);
       rows.push({
@@ -129,7 +133,7 @@ describe("POST /api/guesses", () => {
     let nextGuessId = 0;
     const app = createApi({
       ...createRequiredApiDependencies(),
-      guessRepository: createApiGuessRepository({
+      guessRepository: createRepositoryStub({
         async insert(guess) {
           if (inserted.some((existing) => existing.playerId === guess.playerId)) {
             throw new PendingGuessConflictError();
@@ -168,7 +172,7 @@ describe("POST /api/guesses", () => {
     const inserted: NewGuess[] = [];
     const app = createApi({
       ...createRequiredApiDependencies(),
-      guessRepository: createApiGuessRepository({
+      guessRepository: createRepositoryStub({
         async insert(guess) {
           inserted.push(guess);
         },
@@ -192,7 +196,7 @@ describe("POST /api/guesses", () => {
     const inserted: NewGuess[] = [];
     const app = createApi({
       ...createRequiredApiDependencies(),
-      guessRepository: createApiGuessRepository({
+      guessRepository: createRepositoryStub({
         async insert(guess) {
           inserted.push(guess);
         },
@@ -271,7 +275,7 @@ describe("POST /api/guesses", () => {
     const inserted: NewGuess[] = [];
     const app = createApi({
       ...createRequiredApiDependencies(latestPriceStore),
-      guessRepository: createApiGuessRepository({
+      guessRepository: createRepositoryStub({
         async insert(guess) { inserted.push(guess); },
       }),
     });
@@ -294,7 +298,7 @@ describe("POST /api/guesses", () => {
     const app = createApi({
       ...createRequiredApiDependencies(),
       isReady: () => false,
-      guessRepository: createApiGuessRepository({
+      guessRepository: createRepositoryStub({
         async insert(guess) { inserted.push(guess); },
       }),
     });
@@ -317,7 +321,7 @@ describe("removed price endpoints", () => {
   test("does not expose GET /api/price", async () => {
     const app = createApi({
       ...createRequiredApiDependencies(),
-      guessRepository: createApiGuessRepository(),
+      guessRepository: createRepositoryStub(),
     });
 
     const response = await app.request("/api/price");
@@ -328,7 +332,7 @@ describe("removed price endpoints", () => {
   test("does not expose POST /api/price-messages", async () => {
     const app = createApi({
       ...createRequiredApiDependencies(),
-      guessRepository: createApiGuessRepository(),
+      guessRepository: createRepositoryStub(),
     });
 
     const response = await app.request("/api/price-messages", {
@@ -381,7 +385,7 @@ describe("GET /api/players/:playerId/guesses", () => {
     };
     const app = createApi({
       ...createRequiredApiDependencies(),
-      guessRepository: createApiGuessRepository({
+      guessRepository: createRepositoryStub({
         async findPlayerGuesses(playerId, limit) {
           expect(playerId).toBe("player-1");
           expect(limit).toBe(1);
@@ -421,7 +425,7 @@ describe("GET /api/players/:playerId/score", () => {
   test("returns the score calculated by the backend", async () => {
     const app = createApi({
       ...createRequiredApiDependencies(),
-      guessRepository: createApiGuessRepository({
+      guessRepository: createRepositoryStub({
         async getPlayerScore(playerId) {
           expect(playerId).toBe("player-1");
           return { wins: 4, losses: 2 };
