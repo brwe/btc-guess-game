@@ -1,0 +1,30 @@
+services:
+  postgres-test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    volumes:
+      - pgdata-test:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+  backend-test:
+    build:
+      context: ./backend
+    command: ["bun", "run", "test:integration"]
+    volumes:
+      - ./backend:/app:ro
+      - /app/node_modules
+    environment:
+      TEST_DATABASE_URL: postgresql://postgres:postgres@postgres-test:5432/postgres
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+
+volumes:
+  pgdata-test:

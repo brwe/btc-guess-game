@@ -11,18 +11,12 @@ if (!databaseUrl) {
   throw new Error("TEST_DATABASE_URL or DATABASE_URL is required for repository integration tests");
 }
 
-const schemaName = `btc_guess_test_${crypto.randomUUID().replaceAll("-", "")}`;
-const adminSql = postgres(databaseUrl, { max: 1, onnotice() {} });
-const testSql = postgres(databaseUrl, {
-  max: 5,
-  connection: { search_path: schemaName },
-});
+const testSql = postgres(databaseUrl, { max: 5 });
 const repository = new PostgresGuessRepository(testSql);
 const createdAt = new Date("2026-08-24T10:00:00.000Z");
 const resolveAfter = new Date("2026-08-24T10:01:00.000Z");
 
 beforeAll(async () => {
-  await adminSql.unsafe(`CREATE SCHEMA "${schemaName}"`);
   await repository.initialize();
 });
 
@@ -32,8 +26,6 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await testSql.end();
-  await adminSql.unsafe(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
-  await adminSql.end();
 });
 
 function insertGuess({

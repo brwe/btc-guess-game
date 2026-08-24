@@ -46,16 +46,10 @@ cd ..
 
 ### PostgreSQL integration tests
 
-These tests require Docker. The command starts the PostgreSQL service from `docker-compose.yml` and runs the repository tests against an isolated, temporary database schema.
+These tests require Docker. The command uses `docker-compose.test.yml` to start a dedicated test stack with its own PostgreSQL service, network, and volume. It removes all test resources afterward and does not start or modify the local development stack.
 
 ```bash
 make backend-integration-test
-```
-
-To stop PostgreSQL afterward:
-
-```bash
-docker compose stop postgres
 ```
 
 ## Deploy to AWS
@@ -174,5 +168,3 @@ This is a pet project written for an application process.
 **No database migrations.** The `guesses` table that stores current guesses can be recreated with `RESET_DATABASE_ON_START=true` but there is no proper handling of schema updates. 
 
 **The current design allows for only one backend instance** In more than one backend instance all instances would consume the price stream and update the guesses. Conditional updates inside a transaction can be used to preserve correctness, but the duplicated queries still waste database capacity. For horizontal scaling, we could for example have dedicated workers that work on disjoint batches.
-
-
