@@ -53,23 +53,21 @@ function confirmSubscription(socket: FakeWebSocket) {
 }
 
 describe("CoinbaseTickerClient", () => {
-  test("shares one startup attempt between repeated start calls", async () => {
+  test("starts only one connection when start is called repeatedly", () => {
     const { client, socket } = createContext();
 
-    const firstStart = client.start();
-    const secondStart = client.start();
+    client.start();
+    client.start();
 
-    expect(secondStart).toBe(firstStart);
     confirmSubscription(socket);
-    await Promise.all([firstStart, secondStart]);
     expect(socket.sent).toHaveLength(1);
     client.stop();
   });
 
-  test("subscribes to ticker_batch and accepts Coinbase's ticker_1000 acknowledgement", async () => {
+  test("subscribes to ticker_batch and accepts Coinbase's ticker_1000 acknowledgement", () => {
     const { client, socket } = createContext();
 
-    const started = client.start();
+    client.start();
     socket.emit("open");
 
     expect(socket.sent).toEqual([JSON.stringify({
@@ -81,14 +79,13 @@ describe("CoinbaseTickerClient", () => {
       type: "subscriptions",
       channels: [{ name: "ticker_1000", product_ids: ["BTC-USD"] }],
     }));
-    await started;
     client.stop();
   });
 
-  test("can subscribe to the real-time ticker channel", async () => {
+  test("can subscribe to the real-time ticker channel", () => {
     const { client, socket } = createContext("ticker");
 
-    const started = client.start();
+    client.start();
     socket.emit("open");
 
     expect(socket.sent).toEqual([JSON.stringify({
@@ -100,15 +97,13 @@ describe("CoinbaseTickerClient", () => {
       type: "subscriptions",
       channels: [{ name: "ticker", product_ids: ["BTC-USD"] }],
     }));
-    await started;
     client.stop();
   });
 
   test("passes valid ticker prices and exchange timestamps to the processor", async () => {
     const { client, messages, socket } = createContext();
-    const started = client.start();
+    client.start();
     confirmSubscription(socket);
-    await started;
 
     socket.emit("message", JSON.stringify({
       type: "ticker",
@@ -127,9 +122,8 @@ describe("CoinbaseTickerClient", () => {
 
   test("ignores unsupported, malformed, and out-of-order messages", async () => {
     const { client, messages, socket } = createContext();
-    const started = client.start();
+    client.start();
     confirmSubscription(socket);
-    await started;
 
     socket.emit("message", JSON.stringify({ type: "subscriptions", channels: [] }));
     socket.emit("message", "not JSON");
@@ -160,11 +154,10 @@ describe("CoinbaseTickerClient", () => {
     client.stop();
   });
 
-  test("closes the socket when stopped", async () => {
+  test("closes the socket when stopped", () => {
     const { client, socket } = createContext();
-    const started = client.start();
+    client.start();
     confirmSubscription(socket);
-    await started;
 
     client.stop();
 
@@ -187,9 +180,8 @@ describe("CoinbaseTickerClient", () => {
       logger: { info() {}, warn() {}, error() {} },
     });
 
-    const started = client.start();
+    client.start();
     confirmSubscription(sockets[0]!);
-    await started;
     sockets[0]?.emit("close");
     await Bun.sleep(5);
 
@@ -197,67 +189,97 @@ describe("CoinbaseTickerClient", () => {
     client.stop();
   });
 
-  test("fails startup when the socket emits an error", async () => {
-    const { client, socket } = createContext();
-
-    const started = client.start();
-    socket.emit("error");
-
-    await expect(started).rejects.toThrow("emitted an error during startup");
-  });
-
-  test("fails startup when creating the socket throws", async () => {
+  test("reconnects when creating the socket throws", async () => {
+    const sockets: FakeWebSocket[] = [];
+    let attempts = 0;
     const client = new CoinbaseTickerClient({
       async process() {
         return { resolvedCount: 0, resolvedGuessIds: [] };
       },
     }, {
+      reconnectDelayMs: 1,
       createWebSocket: () => {
-        throw new Error("DNS lookup failed");
+        attempts += 1;
+        if (attempts === 1) throw new Error("DNS lookup failed");
+        const socket = new FakeWebSocket();
+        sockets.push(socket);
+        return socket as unknown as WebSocket;
       },
       logger: { info() {}, warn() {}, error() {} },
     });
 
-    await expect(client.start()).rejects.toThrow("DNS lookup failed");
+    client.start();
+    await Bun.sleep(5);
+
+    expect(attempts).toBe(2);
+    expect(sockets).toHaveLength(1);
+    client.stop();
   });
 
-  test("fails startup when the socket closes before confirmation", async () => {
+  test("is ready only after a valid price is processed on the current connection", async () => {
     const { client, socket } = createContext();
+    client.start();
+    confirmSubscription(socket);
 
-    const started = client.start();
+    expect(client.isReady()).toBe(false);
+
+    socket.emit("message", JSON.stringify({
+      type: "ticker",
+      product_id: "BTC-USD",
+      price: "62345.67",
+      time: "2026-08-21T12:00:00.123Z",
+    }));
+    await Bun.sleep(0);
+
+    expect(client.isReady()).toBe(true);
+    client.stop();
+  });
+
+  test("is not ready after the current connection disconnects", async () => {
+    const { client, socket } = createContext();
+    client.start();
+    confirmSubscription(socket);
+    socket.emit("message", JSON.stringify({
+      type: "ticker",
+      product_id: "BTC-USD",
+      price: "62345.67",
+      time: "2026-08-21T12:00:00.123Z",
+    }));
+    await Bun.sleep(0);
+    expect(client.isReady()).toBe(true);
+
     socket.emit("close");
 
-    await expect(started).rejects.toThrow("closed before confirming the subscription");
+    expect(client.isReady()).toBe(false);
+    client.stop();
   });
 
-  test("fails startup when Coinbase rejects the subscription", async () => {
-    const { client, socket } = createContext();
-
-    const started = client.start();
-    socket.emit("open");
-    socket.emit("message", JSON.stringify({
-      type: "error",
-      message: "Unsupported channel",
-    }));
-
-    await expect(started).rejects.toThrow(
-      "Coinbase rejected the subscription: Unsupported channel",
-    );
-  });
-
-  test("fails startup when subscription confirmation times out", async () => {
+  test("is not ready when the last processed price becomes stale", async () => {
+    let now = 1_000;
+    const socket = new FakeWebSocket();
     const client = new CoinbaseTickerClient({
       async process() {
         return { resolvedCount: 0, resolvedGuessIds: [] };
       },
     }, {
-      startupTimeoutMs: 1,
-      createWebSocket: () => new FakeWebSocket() as unknown as WebSocket,
+      priceStaleAfterMs: 30_000,
+      now: () => now,
+      createWebSocket: () => socket as unknown as WebSocket,
       logger: { info() {}, warn() {}, error() {} },
     });
+    client.start();
+    confirmSubscription(socket);
+    socket.emit("message", JSON.stringify({
+      type: "ticker",
+      product_id: "BTC-USD",
+      price: "62345.67",
+      time: "2026-08-21T12:00:00.123Z",
+    }));
+    await Bun.sleep(0);
 
-    await expect(client.start()).rejects.toThrow(
-      "did not confirm the subscription within 1ms",
-    );
+    now += 30_001;
+
+    expect(client.isReady()).toBe(false);
+    client.stop();
   });
 });

@@ -13,9 +13,10 @@ type CoinbaseTickerClientOptions = {
   productId?: string;
   channel?: CoinbaseTickerChannel;
   reconnectDelayMs?: number;
-  startupTimeoutMs?: number;
+  priceStaleAfterMs?: number;
   createWebSocket?: (url: string) => WebSocket;
   logger?: Logger;
+  now?: () => number;
 };
 
 type CoinbaseTickerMessage = {
@@ -25,26 +26,21 @@ type CoinbaseTickerMessage = {
   time: string;
 };
 
-type StartupState = {
-  resolve: () => void;
-  reject: (error: Error) => void;
-  timeout: ReturnType<typeof setTimeout>;
-};
-
 export class CoinbaseTickerClient {
   private readonly url: string;
   private readonly productId: string;
   private readonly channel: CoinbaseTickerChannel;
   private readonly reconnectDelayMs: number;
-  private readonly startupTimeoutMs: number;
+  private readonly priceStaleAfterMs: number;
   private readonly createWebSocket: (url: string) => WebSocket;
   private readonly logger: Logger;
+  private readonly now: () => number;
   private socket: WebSocket | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private processing = Promise.resolve();
   private lastObservedAtMs: number | null = null;
-  private startPromise: Promise<void> | null = null;
-  private startupState: StartupState | null = null;
+  private lastProcessedAtMs: number | null = null;
+  private running = false;
 
   constructor(
     private readonly priceMessageHandler: PriceMessageHandler,
@@ -54,40 +50,21 @@ export class CoinbaseTickerClient {
     this.productId = options.productId ?? "BTC-USD";
     this.channel = options.channel ?? "ticker_batch";
     this.reconnectDelayMs = options.reconnectDelayMs ?? 1_000;
-    this.startupTimeoutMs = options.startupTimeoutMs ?? 10_000;
+    this.priceStaleAfterMs = options.priceStaleAfterMs ?? 30_000;
     this.createWebSocket = options.createWebSocket ?? ((url) => new WebSocket(url));
     this.logger = options.logger ?? console;
+    this.now = options.now ?? Date.now;
   }
 
-  start(): Promise<void> {
-    if (this.startPromise) return this.startPromise;
-
-    let resolveStart!: () => void;
-    let rejectStart!: (error: Error) => void;
-    const startPromise = new Promise<void>((resolve, reject) => {
-      resolveStart = resolve;
-      rejectStart = reject;
-    });
-    this.startPromise = startPromise;
-    this.startupState = {
-      resolve: resolveStart,
-      reject: rejectStart,
-      timeout: setTimeout(() => {
-        this.failStartup(new Error(
-          `Coinbase WebSocket did not confirm the subscription within ${this.startupTimeoutMs}ms`,
-        ));
-      }, this.startupTimeoutMs),
-    };
+  start(): void {
+    if (this.running) return;
+    this.running = true;
     this.connect();
-    return startPromise;
   }
 
   stop() {
-    if (this.startupState) {
-      this.failStartup(new Error("Coinbase WebSocket stopped during startup"));
-      return;
-    }
-    this.startPromise = null;
+    this.running = false;
+    this.lastProcessedAtMs = null;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -96,17 +73,21 @@ export class CoinbaseTickerClient {
     this.socket = null;
   }
 
+  isReady() {
+    return this.lastProcessedAtMs !== null
+      && this.socket !== null
+      && this.now() - this.lastProcessedAtMs <= this.priceStaleAfterMs;
+  }
+
   private connect() {
-    if (!this.startPromise) return;
+    if (!this.running) return;
 
     let socket: WebSocket;
     try {
       socket = this.createWebSocket(this.url);
     } catch (error) {
       this.logger.error("[coinbase] connection failed", error);
-      if (!this.failStartup(toError(error, "Coinbase WebSocket connection failed"))) {
-        this.scheduleReconnect();
-      }
+      this.scheduleReconnect();
       return;
     }
 
@@ -121,9 +102,7 @@ export class CoinbaseTickerClient {
         this.logger.info(`[coinbase] requested ${this.channel} ${this.productId} subscription`);
       } catch (error) {
         this.logger.error("[coinbase] subscription request failed", error);
-        if (!this.failStartup(toError(error, "Coinbase subscription request failed"))) {
-          this.disconnectAndReconnect(socket);
-        }
+        this.disconnectAndReconnect(socket);
       }
     });
 
@@ -131,36 +110,33 @@ export class CoinbaseTickerClient {
       const controlMessage = parseControlMessage(event.data, this.productId, this.channel);
       if (controlMessage === "subscribed") {
         this.logger.info(`[coinbase] subscribed to ${this.channel} ${this.productId}`);
-        this.completeStartup();
         return;
       }
       if (controlMessage instanceof Error) {
         this.logger.error("[coinbase] subscription rejected", controlMessage);
-        if (!this.failStartup(controlMessage)) {
-          this.disconnectAndReconnect(socket);
-        }
+        this.disconnectAndReconnect(socket);
         return;
       }
-      this.handleMessage(event.data);
+      this.handleMessage(socket, event.data);
     });
 
     socket.addEventListener("error", () => {
+      if (this.socket !== socket) return;
       this.logger.warn("[coinbase] websocket error");
-      this.failStartup(new Error("Coinbase WebSocket emitted an error during startup"));
+      this.disconnectAndReconnect(socket);
     });
 
     socket.addEventListener("close", () => {
-      if (this.socket === socket) this.socket = null;
-      if (!this.startPromise) return;
-      if (this.failStartup(new Error(
-        "Coinbase WebSocket closed before confirming the subscription",
-      ))) return;
+      if (this.socket !== socket) return;
+      this.socket = null;
+      this.lastProcessedAtMs = null;
+      if (!this.running) return;
       this.logger.warn(`[coinbase] disconnected; reconnecting in ${this.reconnectDelayMs}ms`);
       this.scheduleReconnect();
     });
   }
 
-  private handleMessage(data: unknown) {
+  private handleMessage(socket: WebSocket, data: unknown) {
     const message = parseTickerMessage(data, this.productId);
     if (!message) return;
 
@@ -173,14 +149,16 @@ export class CoinbaseTickerClient {
         if (this.lastObservedAtMs !== null && observedAtMs <= this.lastObservedAtMs) return;
         await this.priceMessageHandler.process({ price, observedAt });
         this.lastObservedAtMs = observedAtMs;
+        if (this.socket === socket) this.lastProcessedAtMs = this.now();
       })
       .catch((error) => {
+        if (this.socket === socket) this.lastProcessedAtMs = null;
         this.logger.error("[coinbase] price processing failed", error);
       });
   }
 
   private scheduleReconnect() {
-    if (!this.startPromise || this.reconnectTimer) return;
+    if (!this.running || this.reconnectTimer) return;
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.connect();
@@ -188,35 +166,11 @@ export class CoinbaseTickerClient {
   }
 
   private disconnectAndReconnect(socket: WebSocket) {
-    if (this.socket === socket) this.socket = null;
+    if (this.socket !== socket) return;
+    this.socket = null;
+    this.lastProcessedAtMs = null;
     socket.close();
     this.scheduleReconnect();
-  }
-
-  private completeStartup() {
-    const startupState = this.startupState;
-    if (!startupState) return;
-    clearTimeout(startupState.timeout);
-    this.startupState = null;
-    startupState.resolve();
-  }
-
-  private failStartup(error: Error) {
-    const startupState = this.startupState;
-    if (!startupState) return false;
-
-    clearTimeout(startupState.timeout);
-    this.startupState = null;
-    this.startPromise = null;
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
-    const socket = this.socket;
-    this.socket = null;
-    socket?.close();
-    startupState.reject(error);
-    return true;
   }
 }
 
@@ -276,8 +230,4 @@ function parseTickerMessage(data: unknown, productId: string): CoinbaseTickerMes
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-function toError(error: unknown, fallbackMessage: string) {
-  return error instanceof Error ? error : new Error(fallbackMessage);
 }

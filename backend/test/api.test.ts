@@ -25,10 +25,32 @@ function createRequiredApiDependencies(
 ) {
   return {
     latestPriceStore,
+    isReady: () => true,
     guessRepository: createApiGuessRepository(),
     guessDurationSeconds: 60,
   };
 }
+
+describe("GET /health", () => {
+  test("returns 503 until the ticker client is ready", async () => {
+    const app = createApi({
+      ...createRequiredApiDependencies(),
+      isReady: () => false,
+    });
+
+    const response = await app.request("/health");
+
+    expect(response.status).toBe(503);
+  });
+
+  test("returns 200 when the ticker client is ready", async () => {
+    const app = createApi(createRequiredApiDependencies());
+
+    const response = await app.request("/health");
+
+    expect(response.status).toBe(200);
+  });
+});
 
 function createLatestPriceStore() {
   const store = new InMemoryLatestPriceStore();

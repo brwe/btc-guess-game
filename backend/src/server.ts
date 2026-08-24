@@ -44,17 +44,12 @@ const coinbaseTickerClient = new CoinbaseTickerClient(priceMessageProcessor, {
 });
 
 await guessRepository.initialize({ reset: resetDatabaseOnStart });
-
-try {
-  await coinbaseTickerClient.start();
-} catch (error) {
-  await sql.end();
-  throw error;
-}
+coinbaseTickerClient.start();
 
 const app = createApi({
   guessRepository,
   latestPriceStore,
+  isReady: () => coinbaseTickerClient.isReady(),
   guessDurationSeconds,
 });
 

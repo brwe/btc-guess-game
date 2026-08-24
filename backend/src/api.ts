@@ -10,6 +10,7 @@ import type { LatestPriceLocalStore } from "./latestPriceStore";
 type ApiDependencies = {
   guessRepository: Pick<GuessRepository, "insert" | "findPlayerGuesses" | "getPlayerScore">;
   latestPriceStore: LatestPriceLocalStore;
+  isReady: () => boolean;
   guessDurationSeconds: number;
   createId?: () => string;
   now?: () => Date;
@@ -23,6 +24,7 @@ const registerGuessSchema = z.object({
 export function createApi({
   guessRepository,
   latestPriceStore,
+  isReady,
   guessDurationSeconds,
   createId = () => crypto.randomUUID(),
   now = () => new Date(),
@@ -48,7 +50,9 @@ export function createApi({
     return context.json({ error: "internal server error" }, 500);
   });
 
-  app.get("/health", (context) => context.text("ok"));
+  app.get("/health", (context) => isReady()
+    ? context.text("ok")
+    : context.text("service unavailable", 503));
 
   app.post(
     "/api/guesses",
