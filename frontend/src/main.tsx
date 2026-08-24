@@ -100,15 +100,8 @@ export function App({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadPlayerData = useCallback(async () => {
-    const requestGeneration = ++playerDataGeneration.current;
-    try {
-      const [backendScore, guess] = await Promise.all([
-        getPlayerScore(),
-        getLatestGuess(),
-      ]);
-      if (requestGeneration !== playerDataGeneration.current) return;
-
+  const applyPlayerData = useCallback(
+    (backendScore: Score, guess: GuessResponse | null) => {
       setScore(backendScore);
       if (guess?.status === "pending") {
         setSecondsRemaining(guess.remainingSeconds);
@@ -138,6 +131,20 @@ export function App({
         setLastResolvedGuess(null);
       }
       setError(null);
+    },
+    [],
+  );
+
+  const loadPlayerData = useCallback(async () => {
+    const requestGeneration = ++playerDataGeneration.current;
+    try {
+      const [backendScore, guess] = await Promise.all([
+        getPlayerScore(),
+        getLatestGuess(),
+      ]);
+      if (requestGeneration !== playerDataGeneration.current) return;
+
+      applyPlayerData(backendScore, guess);
     } catch (requestError) {
       if (requestGeneration === playerDataGeneration.current) {
         setError(
@@ -147,7 +154,7 @@ export function App({
         );
       }
     }
-  }, []);
+  }, [applyPlayerData]);
 
   useEffect(() => {
     void loadPlayerData();
@@ -184,8 +191,29 @@ export function App({
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
 
     const checkResolution = async () => {
-      await loadPlayerData();
-      if (!cancelled) retryTimer = setTimeout(checkResolution, 2_000);
+      try {
+        const guess = await getLatestGuess();
+        if (cancelled) return;
+
+        if (guess?.status === "pending") {
+          retryTimer = setTimeout(checkResolution, 2_000);
+          return;
+        }
+
+        const backendScore = await getPlayerScore();
+        if (cancelled) return;
+
+        playerDataGeneration.current++;
+        applyPlayerData(backendScore, guess);
+      } catch (requestError) {
+        if (cancelled) return;
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : String(requestError),
+        );
+        retryTimer = setTimeout(checkResolution, 2_000);
+      }
     };
 
     void checkResolution();
@@ -193,7 +221,7 @@ export function App({
       cancelled = true;
       if (retryTimer) clearTimeout(retryTimer);
     };
-  }, [activeGuess?.guessId, secondsRemaining === 0, loadPlayerData]);
+  }, [activeGuess?.guessId, secondsRemaining === 0, applyPlayerData]);
 
   async function registerGuess(direction: Direction) {
     if (!latestPrice || activeGuess || submitting) return;

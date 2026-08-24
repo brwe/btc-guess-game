@@ -170,11 +170,12 @@ describe("App player-data synchronization", () => {
     });
   });
 
-  test("reloads the score and latest guess when the countdown reaches zero", async () => {
+  test("waits for the guess to resolve before reloading the score", async () => {
     // Count player-data requests so the fake backend can return initial state on
     // the first load and resolved state on the first post-countdown reload.
     let scoreRequests = 0;
     let guessRequests = 0;
+    const playerDataRequests: Array<"score" | "guess"> = [];
     let countdownTick: (() => void) | null = null;
     const ticker = createFakeTicker();
 
@@ -186,7 +187,7 @@ describe("App player-data synchronization", () => {
     }) as typeof window.setInterval;
 
     // The initial GETs return a new player's state. After submission, the next
-    // GETs report that the pending guess won and increased the score.
+    // guess request reports the resolution; only then is the score reloaded.
     globalThis.fetch = (async (input, init) => {
       const url = String(input);
       if (url === "/api/guesses" && init?.method === "POST") {
@@ -202,6 +203,7 @@ describe("App player-data synchronization", () => {
         );
       }
       if (url.endsWith("/score")) {
+        playerDataRequests.push("score");
         scoreRequests++;
         return jsonResponse(
           scoreRequests === 1
@@ -210,6 +212,7 @@ describe("App player-data synchronization", () => {
         );
       }
       if (url.includes("/guesses?limit=1")) {
+        playerDataRequests.push("guess");
         guessRequests++;
         return jsonResponse(
           guessRequests === 1
@@ -253,13 +256,16 @@ describe("App player-data synchronization", () => {
     expect(scoreRequests).toBe(1);
     expect(guessRequests).toBe(1);
 
-    // Advance the captured countdown from one to zero, which starts the
-    // authoritative player-data reload.
+    // Advance the captured countdown from one to zero. The frontend first asks
+    // only for the latest guess, sees that it resolved, and then reloads the
+    // score while retaining that authoritative guess response.
     await act(async () => countdownTick?.());
 
-    // The second pair of GETs must be reflected as a resolved winning round.
+    // The score is requested only after the standalone resolution check. Both
+    // responses are then rendered as the resolved round and updated score.
     expect(await view.findByText("Won")).not.toBeNull();
     expect(scoreRequests).toBe(2);
     expect(guessRequests).toBe(2);
+    expect(playerDataRequests.slice(-2)).toEqual(["guess", "score"]);
   });
 });
