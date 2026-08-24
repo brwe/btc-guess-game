@@ -9,55 +9,116 @@ type CoinbaseTickerHandlers = {
   onDisconnect: () => void;
 };
 
+type CoinbaseTickerOptions = {
+  reconnectDelayMs?: number;
+  staleAfterMs?: number;
+  staleCheckIntervalMs?: number;
+  now?: () => number;
+};
+
 const COINBASE_WEBSOCKET_URL = "wss://ws-feed.exchange.coinbase.com";
 const PRODUCT_ID = "BTC-USD";
 const RECONNECT_DELAY_MS = 1_000;
+const STALE_AFTER_MS = 30_000;
+const STALE_CHECK_INTERVAL_MS = 5_000;
 
 export function subscribeToCoinbaseTicker({
   onPrice,
   onDisconnect,
-}: CoinbaseTickerHandlers) {
+}: CoinbaseTickerHandlers, options: CoinbaseTickerOptions = {}) {
+  const reconnectDelayMs = options.reconnectDelayMs ?? RECONNECT_DELAY_MS;
+  const staleAfterMs = options.staleAfterMs ?? STALE_AFTER_MS;
+  const staleCheckIntervalMs = options.staleCheckIntervalMs ?? STALE_CHECK_INTERVAL_MS;
+  const now = options.now ?? Date.now;
   let stopped = false;
   let socket: WebSocket | null = null;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastMessageAtMs: number | null = null;
 
-  const scheduleReconnect = () => {
-    if (stopped || reconnectTimer) return;
-    reconnectTimer = setTimeout(() => {
-      reconnectTimer = null;
-      connect();
-    }, RECONNECT_DELAY_MS);
-  };
+  function connect() {
+    if (stopped || socket) return;
 
-  const connect = () => {
-    if (stopped) return;
-    const connection = new WebSocket(COINBASE_WEBSOCKET_URL);
+    let connection: WebSocket;
+    try {
+      connection = new WebSocket(COINBASE_WEBSOCKET_URL);
+    } catch {
+      onDisconnect();
+      scheduleReconnect();
+      return;
+    }
     socket = connection;
+    lastMessageAtMs = now();
 
     connection.addEventListener("open", () => {
-      connection.send(JSON.stringify({
-        type: "subscribe",
-        product_ids: [PRODUCT_ID],
-        channels: ["ticker"],
-      }));
+      try {
+        connection.send(JSON.stringify({
+          type: "subscribe",
+          product_ids: [PRODUCT_ID],
+          channels: ["ticker"],
+        }));
+      } catch {
+        reconnect(connection);
+      }
     });
 
     connection.addEventListener("message", (event) => {
       const price = parseTickerMessage(event.data);
-      if (price) onPrice(price);
+      if (!price) return;
+      lastMessageAtMs = now();
+      onPrice(price);
     });
 
-    connection.addEventListener("close", () => {
-      if (socket === connection) socket = null;
-      if (stopped) return;
-      onDisconnect();
-      scheduleReconnect();
-    });
-  };
+    connection.addEventListener("error", () => reconnect(connection));
+    connection.addEventListener("close", () => reconnect(connection));
+  }
 
+  function scheduleReconnect() {
+    if (stopped || reconnectTimer) return;
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      connect();
+    }, reconnectDelayMs);
+  }
+
+  function reconnect(connection: WebSocket, immediately = false) {
+    if (socket !== connection) return;
+    socket = null;
+    lastMessageAtMs = null;
+    connection.close();
+    if (stopped) return;
+    onDisconnect();
+    if (immediately) connect();
+    else scheduleReconnect();
+  }
+
+  function reconnectIfStale() {
+    if (stopped) return;
+    if (!socket) {
+      connect();
+      return;
+    }
+    if (lastMessageAtMs !== null && now() - lastMessageAtMs > staleAfterMs) {
+      reconnect(socket, true);
+    }
+  }
+
+  function handleVisibilityChange() {
+    if (document.visibilityState === "visible") reconnectIfStale();
+  }
+  function handleOnline() {
+    if (socket) reconnect(socket, true);
+    else connect();
+  }
+
+  document.addEventListener("visibilitychange", handleVisibilityChange);
+  window.addEventListener("online", handleOnline);
+  const staleCheckTimer = setInterval(reconnectIfStale, staleCheckIntervalMs);
   connect();
   return () => {
     stopped = true;
+    document.removeEventListener("visibilitychange", handleVisibilityChange);
+    window.removeEventListener("online", handleOnline);
+    clearInterval(staleCheckTimer);
     if (reconnectTimer) clearTimeout(reconnectTimer);
     socket?.close();
     socket = null;
