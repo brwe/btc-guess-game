@@ -111,7 +111,7 @@ describe("CoinbaseTickerClient", () => {
       price: "62345.67",
       time: "2026-08-21T12:00:00.123Z",
     }));
-    await Bun.sleep(0);
+    await client.waitForIdle();
 
     expect(messages).toEqual([{
       price: 62_345.67,
@@ -145,7 +145,7 @@ describe("CoinbaseTickerClient", () => {
       price: "61000",
       time: "2026-08-21T12:00:00.000Z",
     }));
-    await Bun.sleep(0);
+    await client.waitForIdle();
 
     expect(messages).toEqual([{
       price: 62_000,
@@ -245,7 +245,7 @@ describe("CoinbaseTickerClient", () => {
       price: "62345.67",
       time: "2026-08-21T12:00:00.123Z",
     }));
-    await Bun.sleep(0);
+    await client.waitForIdle();
 
     expect(client.isReady()).toBe(true);
     client.stop();
@@ -261,7 +261,7 @@ describe("CoinbaseTickerClient", () => {
       price: "62345.67",
       time: "2026-08-21T12:00:00.123Z",
     }));
-    await Bun.sleep(0);
+    await client.waitForIdle();
     expect(client.isReady()).toBe(true);
 
     socket.emit("close");
@@ -291,7 +291,7 @@ describe("CoinbaseTickerClient", () => {
       price: "62345.67",
       time: "2026-08-21T12:00:00.123Z",
     }));
-    await Bun.sleep(0);
+    await client.waitForIdle();
 
     now += 30_001;
 

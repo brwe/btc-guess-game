@@ -79,6 +79,10 @@ export class CoinbaseTickerClient {
     this.socket = null;
   }
 
+  waitForIdle(): Promise<void> {
+    return this.processing;
+  }
+
   isReady() {
     return this.lastProcessedAtMs !== null
       && this.socket !== null
