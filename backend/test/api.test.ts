@@ -120,7 +120,7 @@ describe("POST /api/guesses", () => {
     }]);
   });
 
-  test("allows only one concurrent pending guess per player", async () => {
+  test("returns 409 when the repository reports a pending-guess conflict", async () => {
     const inserted: NewGuess[] = [];
     const guessIds = [
       "6c3a2fc2-bcf5-4f5f-a755-21d91ff21973",

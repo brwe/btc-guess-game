@@ -164,14 +164,20 @@ describe("CoinbaseTickerClient", () => {
     expect(socket.closed).toBe(true);
   });
 
-  test("reconnects after the socket closes", async () => {
+  test("reconnects after the socket closes", () => {
     const sockets: FakeWebSocket[] = [];
+    const scheduledReconnects: Array<() => void> = [];
     const client = new CoinbaseTickerClient({
       async process() {
         return { resolvedCount: 0, resolvedGuessIds: [] };
       },
     }, {
       reconnectDelayMs: 1,
+      setTimeout: ((callback: TimerHandler) => {
+        scheduledReconnects.push(callback as () => void);
+        return 1 as unknown as ReturnType<typeof setTimeout>;
+      }) as typeof setTimeout,
+      clearTimeout: (() => {}) as typeof clearTimeout,
       createWebSocket: () => {
         const socket = new FakeWebSocket();
         sockets.push(socket);
@@ -183,14 +189,17 @@ describe("CoinbaseTickerClient", () => {
     client.start();
     confirmSubscription(sockets[0]!);
     sockets[0]?.emit("close");
-    await Bun.sleep(5);
+
+    expect(scheduledReconnects).toHaveLength(1);
+    scheduledReconnects[0]!();
 
     expect(sockets).toHaveLength(2);
     client.stop();
   });
 
-  test("reconnects when creating the socket throws", async () => {
+  test("reconnects when creating the socket throws", () => {
     const sockets: FakeWebSocket[] = [];
+    const scheduledReconnects: Array<() => void> = [];
     let attempts = 0;
     const client = new CoinbaseTickerClient({
       async process() {
@@ -198,6 +207,11 @@ describe("CoinbaseTickerClient", () => {
       },
     }, {
       reconnectDelayMs: 1,
+      setTimeout: ((callback: TimerHandler) => {
+        scheduledReconnects.push(callback as () => void);
+        return 1 as unknown as ReturnType<typeof setTimeout>;
+      }) as typeof setTimeout,
+      clearTimeout: (() => {}) as typeof clearTimeout,
       createWebSocket: () => {
         attempts += 1;
         if (attempts === 1) throw new Error("DNS lookup failed");
@@ -209,7 +223,9 @@ describe("CoinbaseTickerClient", () => {
     });
 
     client.start();
-    await Bun.sleep(5);
+
+    expect(scheduledReconnects).toHaveLength(1);
+    scheduledReconnects[0]!();
 
     expect(attempts).toBe(2);
     expect(sockets).toHaveLength(1);

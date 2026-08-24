@@ -17,6 +17,8 @@ type CoinbaseTickerClientOptions = {
   createWebSocket?: (url: string) => WebSocket;
   logger?: Logger;
   now?: () => number;
+  setTimeout?: typeof setTimeout;
+  clearTimeout?: typeof clearTimeout;
 };
 
 type CoinbaseTickerMessage = {
@@ -35,6 +37,8 @@ export class CoinbaseTickerClient {
   private readonly createWebSocket: (url: string) => WebSocket;
   private readonly logger: Logger;
   private readonly now: () => number;
+  private readonly setTimeout: typeof setTimeout;
+  private readonly clearTimeout: typeof clearTimeout;
   private socket: WebSocket | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private processing = Promise.resolve();
@@ -54,6 +58,8 @@ export class CoinbaseTickerClient {
     this.createWebSocket = options.createWebSocket ?? ((url) => new WebSocket(url));
     this.logger = options.logger ?? console;
     this.now = options.now ?? Date.now;
+    this.setTimeout = options.setTimeout ?? globalThis.setTimeout;
+    this.clearTimeout = options.clearTimeout ?? globalThis.clearTimeout;
   }
 
   start(): void {
@@ -66,7 +72,7 @@ export class CoinbaseTickerClient {
     this.running = false;
     this.lastProcessedAtMs = null;
     if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
+      this.clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
     this.socket?.close();
@@ -159,7 +165,7 @@ export class CoinbaseTickerClient {
 
   private scheduleReconnect() {
     if (!this.running || this.reconnectTimer) return;
-    this.reconnectTimer = setTimeout(() => {
+    this.reconnectTimer = this.setTimeout(() => {
       this.reconnectTimer = null;
       this.connect();
     }, this.reconnectDelayMs);

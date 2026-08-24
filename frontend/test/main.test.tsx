@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { App } from "../src/main";
 
@@ -50,10 +50,22 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
+const originalFetch = globalThis.fetch;
+const originalWebSocket = globalThis.WebSocket;
+const originalSetInterval = window.setInterval;
+
+beforeEach(() => {
+  localStorage.clear();
+  FakeWebSocket.current = null;
+});
+
 afterEach(() => {
   cleanup();
   localStorage.clear();
   FakeWebSocket.current = null;
+  globalThis.fetch = originalFetch;
+  globalThis.WebSocket = originalWebSocket;
+  window.setInterval = originalSetInterval;
 });
 
 describe("App player-data synchronization", () => {
@@ -136,6 +148,11 @@ describe("App player-data synchronization", () => {
   test("checks authoritative state after the countdown reaches zero", async () => {
     let scoreRequests = 0;
     let guessRequests = 0;
+    let countdownTick: (() => void) | null = null;
+    window.setInterval = ((handler: TimerHandler) => {
+      countdownTick = handler as () => void;
+      return 1;
+    }) as typeof window.setInterval;
     globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
     globalThis.fetch = (async (input, init) => {
       const url = String(input);
@@ -145,7 +162,7 @@ describe("App player-data synchronization", () => {
           status: "pending",
           entryPrice: 61_000,
           resolveAfter: "2026-08-22T18:01:00.000Z",
-          remainingSeconds: 0,
+          remainingSeconds: 1,
         }, 201);
       }
       if (url.endsWith("/score")) {
@@ -185,6 +202,12 @@ describe("App player-data synchronization", () => {
     const higherButton = await view.findByRole("button", { name: "↑ Higher" });
     await waitFor(() => expect((higherButton as HTMLButtonElement).disabled).toBe(false));
     await act(async () => fireEvent.click(higherButton));
+
+    expect(view.queryByText("1s remaining")).not.toBeNull();
+    expect(scoreRequests).toBe(1);
+    expect(guessRequests).toBe(1);
+
+    await act(async () => countdownTick?.());
 
     expect(await view.findByText("Won")).not.toBeNull();
     expect(scoreRequests).toBe(2);
