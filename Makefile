@@ -1,9 +1,12 @@
-.PHONY: backend-test backend-integration-test fullstack-up-realtime
+.PHONY: backend-test frontend-test backend-integration-test fullstack-up-realtime
 
 TEST_COMPOSE := docker compose -p btc-guess-game-test -f docker-compose.test.yml
 
 backend-test:
 	cd backend && bun install --frozen-lockfile && bun test
+
+frontend-test:
+	cd frontend && bun install --frozen-lockfile && bun run test
 
 backend-integration-test:
 	@set -e; \

@@ -77,7 +77,11 @@ async function getLatestGuess() {
   return guesses[0] ?? null;
 }
 
-export function App() {
+type AppProps = {
+  subscribeToTicker?: typeof subscribeToCoinbaseTicker;
+};
+
+export function App({ subscribeToTicker = subscribeToCoinbaseTicker }: AppProps = {}) {
   const playerDataGeneration = useRef(0);
   const [latestPrice, setLatestPrice] = useState<PriceResponse | null>(null);
   const [activeGuess, setActiveGuess] = useState<ActiveGuess | null>(null);
@@ -132,7 +136,7 @@ export function App() {
     void loadPlayerData();
   }, [loadPlayerData]);
 
-  useEffect(() => subscribeToCoinbaseTicker({
+  useEffect(() => subscribeToTicker({
     onPrice: (price) => {
       setLatestPrice(price);
       setError(null);
@@ -140,7 +144,7 @@ export function App() {
     onDisconnect: () => {
       setError("price updates disconnected; reconnecting...");
     },
-  }), []);
+  }), [subscribeToTicker]);
 
   useEffect(() => {
     if (!activeGuess) {

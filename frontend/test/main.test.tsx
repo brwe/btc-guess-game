@@ -1,39 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { App } from "../src/main";
-
-type EventListener = (event: Event) => void;
-
-class FakeWebSocket {
-  static current: FakeWebSocket | null = null;
-  static readonly OPEN = 1;
-
-  readonly sent: string[] = [];
-  private readonly listeners = new Map<string, EventListener[]>();
-
-  constructor(readonly url: string) {
-    FakeWebSocket.current = this;
-  }
-
-  addEventListener(type: string, listener: EventListener) {
-    const listeners = this.listeners.get(type) ?? [];
-    listeners.push(listener);
-    this.listeners.set(type, listeners);
-  }
-
-  send(data: string) {
-    this.sent.push(data);
-  }
-
-  emit(type: string, data?: string) {
-    const event = data === undefined
-      ? new Event(type)
-      : new MessageEvent(type, { data });
-    for (const listener of this.listeners.get(type) ?? []) listener(event);
-  }
-
-  close() {}
-}
+import { subscribeToCoinbaseTicker } from "../src/coinbaseTicker";
+import type { CoinbasePrice } from "../src/coinbaseTicker";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -51,31 +20,54 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 const originalFetch = globalThis.fetch;
-const originalWebSocket = globalThis.WebSocket;
 const originalSetInterval = window.setInterval;
 
 beforeEach(() => {
   localStorage.clear();
-  FakeWebSocket.current = null;
 });
 
 afterEach(() => {
   cleanup();
   localStorage.clear();
-  FakeWebSocket.current = null;
   globalThis.fetch = originalFetch;
-  globalThis.WebSocket = originalWebSocket;
   window.setInterval = originalSetInterval;
 });
 
+function createFakeTicker() {
+  let priceHandler: ((price: CoinbasePrice) => void) | null = null;
+  const subscribe: typeof subscribeToCoinbaseTicker = ({ onPrice }) => {
+    priceHandler = onPrice;
+    return () => { priceHandler = null; };
+  };
+
+  return {
+    subscribe,
+    emitPrice(price: number, observedAt: string) {
+      if (!priceHandler) throw new Error("ticker is not subscribed");
+      priceHandler({ pair: "BTC/USD", price, observedAt });
+    },
+  };
+}
+
 describe("App player-data synchronization", () => {
   test("an older player-data response cannot clear a newly submitted pending guess", async () => {
+    // Keep the initial score and latest-guess requests pending so they can finish
+    // after the player submits a newer guess.
     const staleScore = deferred<Response>();
     const staleGuess = deferred<Response>();
+    const ticker = createFakeTicker();
+    const requests: Array<{ url: string; method: string; body: unknown }> = [];
 
-    globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+    // Return a new pending guess immediately on POST, while holding the initial
+    // player-data GET requests until the test explicitly resolves them below.
     globalThis.fetch = (async (input, init) => {
       const url = String(input);
+      const method = init?.method ?? "GET";
+      requests.push({
+        url,
+        method,
+        body: init?.body ? JSON.parse(String(init.body)) : undefined,
+      });
       if (url === "/api/guesses" && init?.method === "POST") {
         return jsonResponse({
           guessId: "guess-b",
@@ -89,42 +81,54 @@ describe("App player-data synchronization", () => {
       if (url.includes("/guesses?limit=1")) return await staleGuess.promise;
       throw new Error(`unexpected request: ${url}`);
     }) as typeof fetch;
+
+    // Use a stable identity so every request belongs to the same player.
     localStorage.setItem("btc-game-player-id", "player-1");
 
-    const view = render(<App />);
-    const ticker = FakeWebSocket.current!;
-    act(() => {
-      ticker.emit("open");
-      ticker.emit("message", JSON.stringify({
-        type: "ticker",
-        product_id: "BTC-USD",
-        price: "61000",
-        time: "2026-08-22T18:00:00.000Z",
-      }));
+    // Rendering starts the two held player-data requests. Supplying a price
+    // enables the guess buttons without completing those requests.
+    const view = render(<App subscribeToTicker={ticker.subscribe} />);
+    await waitFor(() => {
+      expect(requests).toContainEqual({
+        url: "/api/players/player-1/score",
+        method: "GET",
+        body: undefined,
+      });
+      expect(requests).toContainEqual({
+        url: "/api/players/player-1/guesses?limit=1",
+        method: "GET",
+        body: undefined,
+      });
     });
-    expect(JSON.parse(ticker.sent[0]!)).toEqual({
-      type: "subscribe",
-      product_ids: ["BTC-USD"],
-      channels: ["ticker"],
+    act(() => {
+      ticker.emitPrice(61_000, "2026-08-22T18:00:00.000Z");
     });
 
+    // Submit guess B while the older score and guess-A requests are still pending.
     const upButton = await view.findByRole("button", { name: "↑ Higher" });
     await waitFor(() => expect((upButton as HTMLButtonElement).disabled).toBe(false));
     await act(async () => fireEvent.click(upButton));
+    expect(requests).toContainEqual({
+      url: "/api/guesses",
+      method: "POST",
+      body: {
+        direction: "up",
+        playerId: "player-1",
+      },
+    });
     await view.findByText("Your guess");
     expect(view.queryByText("60s remaining")).not.toBeNull();
 
+    // Confirm that the UI is tracking guess B's entry price and remains locked
+    // while that guess is pending.
     act(() => {
-      ticker.emit("message", JSON.stringify({
-        type: "ticker",
-        product_id: "BTC-USD",
-        price: "61012.34",
-        time: "2026-08-22T18:00:01.000Z",
-      }));
+      ticker.emitPrice(61_012.34, "2026-08-22T18:00:01.000Z");
     });
     expect(await view.findByText("↑ $12.34")).not.toBeNull();
     expect(view.queryByText("You can guess again after this round settles.")).not.toBeNull();
 
+    // Finish the older initial requests with guess A already resolved. These
+    // responses must be ignored because guess B was submitted after they began.
     await act(async () => {
       staleScore.resolve(jsonResponse({ wins: 1, losses: 0, score: 1 }));
       staleGuess.resolve(jsonResponse([{
@@ -139,21 +143,31 @@ describe("App player-data synchronization", () => {
       }]));
     });
 
+    // Guess B must still be active: its card remains visible and new guesses stay
+    // disabled. Without the generation guard, guess A would clear this state.
     await waitFor(() => {
       expect(view.queryByText("Your guess")).not.toBeNull();
       expect((upButton as HTMLButtonElement).disabled).toBe(true);
     });
   });
 
-  test("checks authoritative state after the countdown reaches zero", async () => {
+  test("reloads the score and latest guess when the countdown reaches zero", async () => {
+    // Count player-data requests so the fake backend can return initial state on
+    // the first load and resolved state on the first post-countdown reload.
     let scoreRequests = 0;
     let guessRequests = 0;
     let countdownTick: (() => void) | null = null;
+    const ticker = createFakeTicker();
+
+    // Capture the countdown callback so the test can advance one second without
+    // waiting for a real timer.
     window.setInterval = ((handler: TimerHandler) => {
       countdownTick = handler as () => void;
       return 1;
     }) as typeof window.setInterval;
-    globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+
+    // The initial GETs return a new player's state. After submission, the next
+    // GETs report that the pending guess won and increased the score.
     globalThis.fetch = (async (input, init) => {
       const url = String(input);
       if (url === "/api/guesses" && init?.method === "POST") {
@@ -186,29 +200,32 @@ describe("App player-data synchronization", () => {
       }
       throw new Error(`unexpected request: ${url}`);
     }) as typeof fetch;
+
+    // Use a stable identity for the initial load, submission, and settlement poll.
     localStorage.setItem("btc-game-player-id", "player-1");
 
-    const view = render(<App />);
-    const ticker = FakeWebSocket.current!;
+    // Supply a market price so the Higher button becomes available.
+    const view = render(<App subscribeToTicker={ticker.subscribe} />);
     act(() => {
-      ticker.emit("message", JSON.stringify({
-        type: "ticker",
-        product_id: "BTC-USD",
-        price: "61000",
-        time: "2026-08-22T18:00:00.000Z",
-      }));
+      ticker.emitPrice(61_000, "2026-08-22T18:00:00.000Z");
     });
 
+    // Submit a guess whose server-provided countdown starts at one second.
     const higherButton = await view.findByRole("button", { name: "↑ Higher" });
     await waitFor(() => expect((higherButton as HTMLButtonElement).disabled).toBe(false));
     await act(async () => fireEvent.click(higherButton));
 
+    // Before the countdown expires, the UI remains pending and no settlement
+    // reload has occurred beyond the initial pair of GET requests.
     expect(view.queryByText("1s remaining")).not.toBeNull();
     expect(scoreRequests).toBe(1);
     expect(guessRequests).toBe(1);
 
+    // Advance the captured countdown from one to zero, which starts the
+    // authoritative player-data reload.
     await act(async () => countdownTick?.());
 
+    // The second pair of GETs must be reflected as a resolved winning round.
     expect(await view.findByText("Won")).not.toBeNull();
     expect(scoreRequests).toBe(2);
     expect(guessRequests).toBe(2);

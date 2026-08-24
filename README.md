@@ -38,10 +38,7 @@ make backend-test
 ### Frontend component tests
 
 ```bash
-cd frontend
-bun install --frozen-lockfile
-bun run test
-cd ..
+make frontend-test
 ```
 
 ### PostgreSQL integration tests

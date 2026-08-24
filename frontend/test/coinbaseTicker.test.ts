@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { subscribeToCoinbaseTicker } from "../src/coinbaseTicker";
+import type { CoinbasePrice } from "../src/coinbaseTicker";
 
 type EventListener = (event: Event) => void;
 
@@ -49,6 +50,32 @@ afterEach(() => {
 });
 
 describe("subscribeToCoinbaseTicker", () => {
+  test("subscribes to the BTC-USD ticker and forwards valid prices", () => {
+    const prices: CoinbasePrice[] = [];
+    const unsubscribe = subscribeToCoinbaseTicker({
+      onPrice(price) { prices.push(price); },
+      onDisconnect() {},
+    }, {
+      staleCheckIntervalMs: 60_000,
+    });
+    const socket = FakeWebSocket.instances[0]!;
+
+    socket.emit("open");
+    socket.emit("message", tickerMessage("61000"));
+
+    expect(socket.sent).toEqual([JSON.stringify({
+      type: "subscribe",
+      product_ids: ["BTC-USD"],
+      channels: ["ticker"],
+    })]);
+    expect(prices).toEqual([{
+      pair: "BTC/USD",
+      price: 61_000,
+      observedAt: "2026-08-24T12:00:00.000Z",
+    }]);
+    unsubscribe();
+  });
+
   test("reconnects a stale connection when a background tab becomes visible", () => {
     let now = 1_000;
     let disconnects = 0;
